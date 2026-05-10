@@ -63,8 +63,8 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --background: oklch(0.08 0.005 260);
+  --foreground: oklch(0.98 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   --popover: oklch(1 0 0);
@@ -95,6 +95,17 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+
+  --player-1: oklch(0.7 0.18 240);
+  --player-2: oklch(0.68 0.22 25);
+  --player-3: oklch(0.75 0.18 145);
+  --player-4: oklch(0.78 0.16 75);
+  --calc-surface: oklch(0.13 0.01 260);
+  --calc-key: oklch(0.18 0.01 260);
+  --calc-orange: oklch(0.75 0.18 60);
+  --calc-red: oklch(0.65 0.22 25);
+  --calc-green: oklch(0.7 0.18 145);
+  --calc-gray: oklch(0.5 0.01 260);
 }
 
 .dark {
