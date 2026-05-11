@@ -1,13 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface CalculatorProps {
   open: boolean;
   onClose: () => void;
   onDone: (value: number) => void;
+  initialValue?: string;
 }
 
-export function Calculator({ open, onClose, onDone }: CalculatorProps) {
-  const [expr, setExpr] = useState("0");
+export function Calculator({ open, onClose, onDone, initialValue = "0" }: CalculatorProps) {
+  const [expr, setExpr] = useState(initialValue);
+
+  useEffect(() => {
+    if (open) {
+      setExpr(initialValue);
+    }
+  }, [open, initialValue]);
 
   if (!open) return null;
 
@@ -41,7 +48,7 @@ export function Calculator({ open, onClose, onDone }: CalculatorProps) {
     onClose();
   };
 
-  const btn = "h-14 rounded-xl text-xl font-medium text-white active:scale-95 transition flex items-center justify-center";
+  const btn = "h-16 rounded-xl text-xl font-medium text-white active:scale-95 transition flex items-center justify-center";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" onClick={cancel}>

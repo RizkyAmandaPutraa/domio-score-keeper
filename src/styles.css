@@ -146,10 +146,21 @@
 @layer base {
   * {
     border-color: var(--color-border);
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    height: 100dvh; /* dynamic viewport height untuk mobile */
+    overflow: hidden;
   }
 
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    touch-action: manipulation; /* cegah double-tap zoom */
+    -webkit-user-select: none;
+    user-select: none;
   }
 }
