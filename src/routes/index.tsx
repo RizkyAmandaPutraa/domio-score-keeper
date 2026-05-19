@@ -48,24 +48,22 @@ function formatRupiah(amount: number): string {
  * Tier 3            = total ke-3 terkecil → -Rp 5.000
  * Tier 4            = total terbesar      → -Rp 6.000
  */
-function computeTiers(players: Player[], tieWinnerId?: string | null): Map<string, { tier: number; amount: number }> {
+function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, { tier: number; amount: number }> {
   const result = new Map<string, { tier: number; amount: number }>();
   const totals = players.map((p) => p.scores.reduce((a, b) => a + b, 0));
   const someoneReached51 = totals.some((t) => t >= 51);
   if (!someoneReached51) return result;
 
-  // Hapus syarat allSameRounds agar sistem langsung menghitung
-  // tier dan saldo begitu ada pemain yang mencapai >= 51.
-
   const ranked = players
     .map((p, i) => ({ id: p.id, total: totals[i] }))
     .sort((a, b) => {
       if (a.total !== b.total) return a.total - b.total;
-      // Jika skor sama dan ada tie winner, prioritaskan tie winner ke depan
-      if (tieWinnerId) {
-        if (a.id === tieWinnerId) return -1;
-        if (b.id === tieWinnerId) return 1;
-      }
+      // Gunakan tieOrder untuk memecah seri di semua posisi
+      const aIdx = tieOrder.indexOf(a.id);
+      const bIdx = tieOrder.indexOf(b.id);
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+      if (aIdx !== -1) return -1;
+      if (bIdx !== -1) return 1;
       return 0;
     });
 
@@ -206,8 +204,8 @@ function Index() {
   const [showResetAllModal, setShowResetAllModal] = useState(false);
   const [currentBatch, setCurrentBatch] = useState<string[]>([]);
   const [showTieModal, setShowTieModal] = useState(false);
-  const [tiedPlayers, setTiedPlayers] = useState<Player[]>([]);
-  const [tieWinnerId, setTieWinnerId] = useState<string | null>(null);
+  const [tieOrder, setTieOrder] = useState<string[]>([]);
+  const [selectedTiePlayerId, setSelectedTiePlayerId] = useState<string | null>(null);
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -264,13 +262,76 @@ function Index() {
   // Pemenang = pemain dengan skor terendah saat game selesai
   const minTotal = gameFinished ? Math.min(...totals) : Infinity;
 
-  // Deteksi tie: 2+ pemain dengan skor terendah yang sama
-  const playersWithMinTotal = gameFinished
-    ? players.filter((p) => total(p) === minTotal)
-    : [];
-  const hasTie = playersWithMinTotal.length >= 2;
+  const tiers = computeTiers(players, tieOrder);
 
-  const tiers = computeTiers(players, tieWinnerId);
+  // --- Deteksi tie yang belum diresolved di SEMUA posisi ---
+  const allSameRounds = roundCounts.length > 0 && roundCounts.every((c) => c === roundCounts[0]);
+
+  const unresolvedTie = (() => {
+    if (!gameFinished || !allSameRounds) return null;
+
+    const ranked = players
+      .map((p, i) => ({ player: p, total: totals[i] }))
+      .sort((a, b) => {
+        if (a.total !== b.total) return a.total - b.total;
+        const aIdx = tieOrder.indexOf(a.player.id);
+        const bIdx = tieOrder.indexOf(b.player.id);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        return 0;
+      });
+
+    const isSuperTier = ranked[0].total <= 10;
+    const tierPayments = isSuperTier
+      ? [24000, -8000, -8000, -8000].slice(0, players.length)
+      : [15000, -4000, -5000, -6000].slice(0, players.length);
+
+    let i = 0;
+    while (i < ranked.length) {
+      let j = i + 1;
+      while (j < ranked.length && ranked[j].total === ranked[i].total) j++;
+
+      if (j - i >= 2) {
+        const groupPlayers = ranked.slice(i, j).map((r) => r.player);
+        const groupAmounts = Array.from({ length: j - i }, (_, k) => {
+          const idx = Math.min(i + k, tierPayments.length - 1);
+          return tierPayments[idx];
+        });
+
+        // Skip jika semua amount sama (misal super tier loser semua -8k)
+        if (!groupAmounts.every((a) => a === groupAmounts[0])) {
+          const unresolvedPlayers = groupPlayers.filter((p) => !tieOrder.includes(p.id));
+          if (unresolvedPlayers.length >= 2) {
+            const resolvedCount = groupPlayers.length - unresolvedPlayers.length;
+            const betterIdx = i + resolvedCount;
+            const isWinnerTie = betterIdx === 0;
+            const betterAmount = tierPayments[Math.min(betterIdx, tierPayments.length - 1)];
+            return { players: unresolvedPlayers, isWinnerTie, betterAmount };
+          }
+        }
+      }
+      i = j;
+    }
+    return null;
+  })();
+
+  // Pemenang = pemain dengan skor terendah (dari tieOrder jika ada tie)
+  const winnerId = (() => {
+    if (!gameFinished) return null;
+    const sorted = players
+      .map((p, i) => ({ id: p.id, total: totals[i] }))
+      .sort((a, b) => {
+        if (a.total !== b.total) return a.total - b.total;
+        const aIdx = tieOrder.indexOf(a.id);
+        const bIdx = tieOrder.indexOf(b.id);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+        return 0;
+      });
+    return sorted[0]?.id ?? null;
+  })();
 
   // --- Blok & R Logo Logic ---
   let lastBlokRowIndex = -1;
@@ -282,7 +343,6 @@ function Index() {
     const isComplete = players.every(p => p.scores.length > i);
     if (isComplete) {
       const rowScores = players.map(p => p.scores[i]);
-      // Blok condition: Everyone has a score > 0
       const isBlok = rowScores.every(score => score > 0);
       if (isBlok) {
         lastBlokRowIndex = i;
@@ -295,14 +355,33 @@ function Index() {
     }
   }
 
-  // Tampilkan modal tie-breaker secara otomatis ketika ada tie
-  // Cek setiap kali skor berubah, bukan hanya saat transisi gameFinished
+  // Auto-show tie modal ketika ada unresolved tie
   useEffect(() => {
-    if (gameFinished && hasTie && !tieWinnerId) {
-      setTiedPlayers(playersWithMinTotal);
+    if (unresolvedTie && !showTieModal) {
+      setSelectedTiePlayerId(null);
       setShowTieModal(true);
     }
-  }, [players]);
+  }, [players, tieOrder]);
+
+  // Auto-reset ketika semua tie sudah resolved
+  useEffect(() => {
+    if (gameFinished && allSameRounds && !unresolvedTie && tieOrder.length > 0) {
+      const finalTiers = computeTiers(players, tieOrder);
+      setPlayers((prev) =>
+        prev.map((p) => {
+          const currentWins = typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0;
+          const currentBalance = typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0;
+          const isWinner = p.id === winnerId;
+          const tierInfo = finalTiers.get(p.id);
+          const earnedAmount = tierInfo ? tierInfo.amount : 0;
+          return { ...p, scores: [], wins: currentWins + (isWinner ? 1 : 0), balance: currentBalance + earnedAmount };
+        })
+      );
+      setTieOrder([]);
+      setCurrentBatch([]);
+      if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
+    }
+  }, [tieOrder]);
 
   const addScore = (id: string, value: number) => {
     if (!value) return;
@@ -354,10 +433,10 @@ function Index() {
     setCurrentBatch([]);
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
 
-    // Jika ada tie dan belum pilih pemenang, tampilkan modal tie dulu
-    if (gameFinished && hasTie && !tieWinnerId) {
+    // Jika ada unresolved tie, tampilkan modal tie dulu
+    if (unresolvedTie) {
       setShowResetModal(false);
-      setTiedPlayers(playersWithMinTotal);
+      setSelectedTiePlayerId(null);
       setShowTieModal(true);
       return;
     }
@@ -367,8 +446,7 @@ function Index() {
         const t = total(p);
         const currentWins = typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0;
         const currentBalance = typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0;
-        // Jika ada tie, gunakan tieWinnerId untuk menentukan pemenang
-        const isWinner = gameFinished && (hasTie ? p.id === tieWinnerId : t === minTotal);
+        const isWinner = gameFinished && p.id === winnerId;
         const tierInfo = tiers.get(p.id);
         const earnedAmount = tierInfo ? tierInfo.amount : 0;
         return {
@@ -380,7 +458,7 @@ function Index() {
       })
     );
     setShowResetModal(false);
-    setTieWinnerId(null);
+    setTieOrder([]);
   };
 
   const resetAll = () => {
@@ -582,10 +660,10 @@ function Index() {
       )}
 
       {/* Tie-Breaker Modal */}
-      {showTieModal && (
+      {showTieModal && unresolvedTie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowTieModal(false)} />
-          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-yellow-500/30 animate-in fade-in zoom-in duration-200">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setShowTieModal(false); setTieOrder([]); }} />
+          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-yellow-500/30">
             {/* Trophy icon */}
             <div className="flex justify-center mb-3">
               <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center">
@@ -595,20 +673,22 @@ function Index() {
 
             <h2 className="text-lg font-semibold mb-1">Samo skor ge</h2>
             <p className="text-sm text-foreground/60 mb-5">
-              Siapo menang?
+              {unresolvedTie.isWinnerTie
+                ? "Siapo menang?"
+                : `Siapo yang kalah ${formatRupiah(Math.abs(unresolvedTie.betterAmount))}?`}
             </p>
 
             {/* Player buttons */}
             <div className="flex flex-col gap-3 mb-4">
-              {tiedPlayers.map((tp) => {
+              {unresolvedTie.players.map((tp) => {
                 const playerIndex = players.findIndex((p) => p.id === tp.id);
                 const color = COLORS[playerIndex] || "var(--foreground)";
-                const isSelected = tieWinnerId === tp.id;
+                const isSelected = selectedTiePlayerId === tp.id;
 
                 return (
                   <button
                     key={tp.id}
-                    onClick={() => setTieWinnerId(tp.id)}
+                    onClick={() => setSelectedTiePlayerId(tp.id)}
                     className="relative flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all duration-200"
                     style={{
                       backgroundColor: isSelected
@@ -635,7 +715,8 @@ function Index() {
               <button
                 onClick={() => {
                   setShowTieModal(false);
-                  setTieWinnerId(null);
+                  setTieOrder([]);
+                  setSelectedTiePlayerId(null);
                 }}
                 className="px-4 py-2 rounded-xl text-sm font-medium bg-white/10 hover:bg-white/15 transition"
               >
@@ -643,33 +724,16 @@ function Index() {
               </button>
               <button
                 onClick={() => {
-                  if (tieWinnerId) {
-                    // Hitung tiers final dengan pemenang yang sudah dipilih
-                    const finalTiers = computeTiers(players, tieWinnerId);
-                    setPlayers((prev) =>
-                      prev.map((p) => {
-                        const currentWins = typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0;
-                        const currentBalance = typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0;
-                        const isWinner = p.id === tieWinnerId;
-                        const tierInfo = finalTiers.get(p.id);
-                        const earnedAmount = tierInfo ? tierInfo.amount : 0;
-                        return {
-                          ...p,
-                          scores: [],
-                          wins: currentWins + (isWinner ? 1 : 0),
-                          balance: currentBalance + earnedAmount,
-                        };
-                      })
-                    );
+                  if (selectedTiePlayerId) {
+                    // Tambahkan player yang dipilih ke tieOrder
+                    setTieOrder((prev) => [...prev, selectedTiePlayerId]);
+                    setSelectedTiePlayerId(null);
                     setShowTieModal(false);
-                    setTieWinnerId(null);
-                    setCurrentBatch([]);
-                    if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
                   }
                 }}
-                disabled={!tieWinnerId}
+                disabled={!selectedTiePlayerId}
                 className="px-4 py-2 rounded-xl text-sm font-medium text-black transition disabled:opacity-30"
-                style={{ backgroundColor: tieWinnerId ? 'var(--calc-orange)' : 'var(--calc-gray)' }}
+                style={{ backgroundColor: selectedTiePlayerId ? 'var(--calc-orange)' : 'var(--calc-gray)' }}
               >
                 Konfirmasi
               </button>
