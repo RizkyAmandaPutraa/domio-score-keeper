@@ -296,14 +296,13 @@ function Index() {
   }
 
   // Tampilkan modal tie-breaker secara otomatis ketika ada tie
-  const prevGameFinished = useRef(false);
+  // Cek setiap kali skor berubah, bukan hanya saat transisi gameFinished
   useEffect(() => {
-    if (gameFinished && !prevGameFinished.current && hasTie && !tieWinnerId) {
+    if (gameFinished && hasTie && !tieWinnerId) {
       setTiedPlayers(playersWithMinTotal);
       setShowTieModal(true);
     }
-    prevGameFinished.current = gameFinished;
-  }, [gameFinished, hasTie]);
+  }, [players]);
 
   const addScore = (id: string, value: number) => {
     if (!value) return;
