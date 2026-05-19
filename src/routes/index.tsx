@@ -161,7 +161,7 @@ function ScoreHistory({ scores, color, showR, rIndex, onEdit, onDeleteLast }: { 
         return (
           <div
             key={idx}
-            className="flex items-center justify-center py-1.5 cursor-pointer active:bg-white/5 rounded-lg mx-1 relative"
+            className={`flex items-center justify-center py-1.5 cursor-pointer active:bg-white/5 rounded-lg mx-1 relative ${isLast ? 'score-enter' : ''}`}
             onTouchStart={handleStart}
             onTouchMove={handleMove}
             onTouchEnd={handleEnd}
@@ -542,6 +542,11 @@ function Index() {
           const tierInfo = tiers.get(p.id);
           const balance = typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0;
 
+          // Animasi: cek apakah ada pemain lain yang sudah >= 30
+          const someoneAbove30 = totals.some((tt) => tt >= 30);
+          const isSuperTierCandidate = t <= 10 && t > 0 && someoneAbove30;
+          const isDanger = t >= 40 && t < 51;
+
           return (
             <div
               key={p.id}
@@ -619,9 +624,9 @@ function Index() {
 
               {/* Total skor */}
               <div
-                className="mt-1 text-4xl font-bold tabular-nums shrink-0"
+                className={`mt-1 text-4xl font-bold tabular-nums shrink-0 ${isDanger ? 'danger-pulse' : ''} ${isSuperTierCandidate ? 'super-glow' : ''}`}
                 style={{
-                  color: t >= 51 ? "var(--calc-red)" : color,
+                  color: t >= 40 ? "var(--calc-red)" : t <= 10 && t > 0 ? "#ffffff" : color,
                 }}
               >
                 {t}
@@ -634,8 +639,8 @@ function Index() {
       {/* Reset Confirmation Modal */}
       {showResetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowResetModal(false)} />
-          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl">
+          <div className="absolute inset-0 bg-black/60 modal-overlay" onClick={() => setShowResetModal(false)} />
+          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl modal-content">
             <h2 className="text-lg font-semibold mb-2">Reset Skor</h2>
             <p className="text-sm text-foreground/70 mb-6">
               iyo reset ko ?
@@ -662,8 +667,8 @@ function Index() {
       {/* Tie-Breaker Modal */}
       {showTieModal && unresolvedTie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setShowTieModal(false); setTieOrder([]); }} />
-          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-yellow-500/30">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm modal-overlay" onClick={() => { setShowTieModal(false); setTieOrder([]); }} />
+          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-yellow-500/30 modal-content">
             {/* Trophy icon */}
             <div className="flex justify-center mb-3">
               <div className="w-14 h-14 rounded-full bg-yellow-500/20 flex items-center justify-center">
@@ -745,8 +750,8 @@ function Index() {
       {/* Reset All Confirmation Modal */}
       {showResetAllModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowResetAllModal(false)} />
-          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-red-500/20">
+          <div className="absolute inset-0 bg-black/60 modal-overlay" onClick={() => setShowResetAllModal(false)} />
+          <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-red-500/20 modal-content">
             <h2 className="text-lg font-semibold mb-2 text-red-500">Reset sado </h2>
             <p className="text-sm text-foreground/70 mb-6">
               Reset sado ko?.
