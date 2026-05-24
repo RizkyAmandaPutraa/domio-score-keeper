@@ -259,12 +259,12 @@ function Index() {
     }
   }, [players, tieOrder, hasDismissedTie, unresolvedTie, showTieModal]);
 
-  // Reset dismissed state when there is no unresolved tie
+  // Reset dismissed state when there is no unresolved tie and rounds are complete
   useEffect(() => {
-    if (!unresolvedTie) {
+    if (allSameRounds && !unresolvedTie) {
       setHasDismissedTie(false);
     }
-  }, [unresolvedTie]);
+  }, [allSameRounds, unresolvedTie]);
 
   // Auto-reset ketika semua tie sudah resolved
   useEffect(() => {
@@ -408,7 +408,7 @@ function Index() {
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: '#0A0E1A', color: '#E8ECF4' }}>
       {/* Floating Tie-Breaker Confirmation Banner */}
-      {unresolvedTie && hasDismissedTie && (
+      {gameFinished && hasDismissedTie && (!allSameRounds || unresolvedTie !== null) && (
         <button
           onClick={() => {
             setHasDismissedTie(false);
