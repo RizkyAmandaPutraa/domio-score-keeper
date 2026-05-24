@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Plus, RotateCcw, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Menu, Plus, RotateCcw, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
 import { Calculator } from "@/components/Calculator";
 
 export const Route = createFileRoute("/")({
@@ -39,6 +39,13 @@ function formatRupiah(amount: number): string {
     currency: "IDR",
     minimumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatCompactRupiah(amount: number): string {
+  const abs = Math.abs(amount);
+  if (abs >= 1000) return `${amount < 0 ? "-" : "+"}${Math.round(abs / 1000)}K`;
+  if (amount === 0) return "0";
+  return `${amount > 0 ? "+" : "-"}${abs}`;
 }
 
 /**
@@ -424,6 +431,9 @@ function Index() {
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="header-btn header-menu-btn" aria-label="Menu">
+            <Menu style={{ width: 20, height: 20 }} />
+          </button>
           <h1>Domino Score</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -437,7 +447,7 @@ function Index() {
       {/* Scrollable Content Area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', minHeight: 0 }}>
         {/* Player Summary Cards */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${players.length}, 1fr)`, gap: 8, marginBottom: 12 }}>
+        <div className="player-summary-grid" style={{ gridTemplateColumns: `repeat(${players.length}, minmax(0, 1fr))` }}>
           {players.map((p, i) => {
             const color = COLORS[i];
             const t = total(p);
@@ -447,25 +457,31 @@ function Index() {
             const isDanger = t >= 40 && t < 51;
             const someoneAbove30 = totals.some(tt => tt >= 30);
             const isSTC = t <= 10 && t > 0 && someoneAbove30;
+            const balanceState = projBal > 0 ? 'profit' : projBal < 0 ? 'loss' : 'neutral';
             return (
-              <div key={p.id} className="player-card" style={{ '--card-accent-color': color, boxShadow: `0 0 20px color-mix(in srgb, ${color} 8%, transparent), 0 0 40px color-mix(in srgb, ${color} 4%, transparent)` } as React.CSSProperties}>
-                <div className="card-name-row">
-                  {editingId === p.id ? (
-                    <input autoFocus value={p.name} onChange={e => renamePlayer(p.id, e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={e => e.key === 'Enter' && setEditingId(null)} className="name-edit-input" style={{ color }} />
-                  ) : (
-                    <button onClick={() => setEditingId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color }}>
-                      <span className="card-name">{p.name}</span>
-                      <Pencil style={{ width: 11, height: 11, opacity: 0.4 }} />
-                    </button>
-                  )}
-                </div>
-                <div className="card-trophy" style={{ backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)`, color }}>
-                  <Trophy style={{ width: 13, height: 13 }} />{p.wins}
-                </div>
-                <div className="card-balance" style={{ color: projBal >= 0 ? 'var(--calc-green)' : 'var(--calc-red)', minHeight: 14 }}>
-                  {(bal !== 0 || tierInfo) ? <>{projBal > 0 ? '+' : ''}{formatRupiah(projBal)}</> : null}
+              <div
+                key={p.id}
+                className={`player-card balance-${balanceState}`}
+                style={{
+                  '--card-accent-color': color,
+                  '--card-glow-idle': `0 8px 24px rgba(0, 0, 0, 0.22), inset 0 0 18px color-mix(in srgb, ${color} 3%, transparent)`,
+                  '--card-glow-active': `0 10px 26px rgba(0, 0, 0, 0.3), inset 0 0 20px color-mix(in srgb, ${color} 5%, transparent)`,
+                } as React.CSSProperties}
+              >
+                <div className="card-top-row card-top-row-trophy-only">
+                  <div className="card-trophy" style={{ backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)`, color }}>
+                    <Trophy style={{ width: 13, height: 13 }} />{p.wins}
+                  </div>
                 </div>
                 <div className={`card-total ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`} style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}>{t}</div>
+                <div className="card-score-label">TOTAL SCORE</div>
+                <div className="card-balance-row">
+                  <div className="card-balance-pill">
+                    {balanceState === 'loss' ? <ArrowDownRight style={{ width: 14, height: 14 }} /> : <ArrowUpRight style={{ width: 14, height: 14 }} />}
+                    <span>{formatCompactRupiah(projBal)}</span>
+                  </div>
+                </div>
+                <div className="card-balance-full">{formatRupiah(projBal)}</div>
               </div>
             );
           })}
@@ -549,7 +565,22 @@ function Index() {
               <button className="fab-btn" onClick={() => setCalcFor(p.id)} style={{ backgroundColor: color }} aria-label={`Tambah skor ${p.name}`}>
                 <Plus style={{ width: 24, height: 24, color: '#fff' }} />
               </button>
-              <span className="action-name" style={{ color }}>{p.name.length > 3 ? p.name.substring(0, 3) : p.name}</span>
+              {editingId === p.id ? (
+                <input
+                  autoFocus
+                  value={p.name}
+                  onChange={e => renamePlayer(p.id, e.target.value)}
+                  onBlur={() => setEditingId(null)}
+                  onKeyDown={e => e.key === 'Enter' && setEditingId(null)}
+                  className="action-name-input"
+                  style={{ color, borderColor: `color-mix(in srgb, ${color} 45%, transparent)` }}
+                />
+              ) : (
+                <button onClick={() => setEditingId(p.id)} className="action-name-button" style={{ color }}>
+                  <span className="action-name">{p.name.length > 5 ? p.name.substring(0, 5) : p.name}</span>
+                  <Pencil style={{ width: 10, height: 10, opacity: 0.45 }} />
+                </button>
+              )}
               <span className={`action-total ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`} style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}>{t}</span>
             </div>
           );
