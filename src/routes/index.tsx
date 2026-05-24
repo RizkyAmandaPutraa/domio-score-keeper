@@ -102,6 +102,7 @@ function Index() {
   const [tieOrder, setTieOrder] = useState<string[]>([]);
   const [selectedTiePlayerId, setSelectedTiePlayerId] = useState<string | null>(null);
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [hasDismissedTie, setHasDismissedTie] = useState(false);
 
   useEffect(() => {
     try {
@@ -252,11 +253,18 @@ function Index() {
 
   // Auto-show tie modal ketika ada unresolved tie
   useEffect(() => {
-    if (unresolvedTie && !showTieModal) {
+    if (unresolvedTie && !showTieModal && !hasDismissedTie) {
       setSelectedTiePlayerId(null);
       setShowTieModal(true);
     }
-  }, [players, tieOrder]);
+  }, [players, tieOrder, hasDismissedTie, unresolvedTie, showTieModal]);
+
+  // Reset dismissed state when there is no unresolved tie
+  useEffect(() => {
+    if (!unresolvedTie) {
+      setHasDismissedTie(false);
+    }
+  }, [unresolvedTie]);
 
   // Auto-reset ketika semua tie sudah resolved
   useEffect(() => {
@@ -327,6 +335,7 @@ function Index() {
   const doReset = () => {
     setCurrentBatch([]);
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
+    setHasDismissedTie(false);
 
     // Jika ada unresolved tie, tampilkan modal tie dulu
     if (unresolvedTie) {
@@ -363,6 +372,7 @@ function Index() {
   const doResetAll = () => {
     setCurrentBatch([]);
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
+    setHasDismissedTie(false);
 
     setPlayers((prev) =>
       prev.map((p) => ({
@@ -397,6 +407,20 @@ function Index() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: '#0A0E1A', color: '#E8ECF4' }}>
+      {/* Floating Tie-Breaker Confirmation Banner */}
+      {unresolvedTie && hasDismissedTie && (
+        <button
+          onClick={() => {
+            setHasDismissedTie(false);
+            setShowTieModal(true);
+          }}
+          className="floating-tie-banner"
+        >
+          <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
+          <span>Konfirmasi Pemenang</span>
+        </button>
+      )}
+
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -563,7 +587,7 @@ function Index() {
       {/* Tie-Breaker Modal */}
       {showTieModal && unresolvedTie && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm modal-overlay" onClick={() => { setShowTieModal(false); setTieOrder([]); }} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm modal-overlay" onClick={() => { setShowTieModal(false); setTieOrder([]); setHasDismissedTie(true); }} />
           <div className="relative bg-[var(--calc-surface)] rounded-2xl p-6 w-80 max-w-[90%] text-center shadow-2xl border border-yellow-500/30 modal-content">
             {/* Trophy icon */}
             <div className="flex justify-center mb-3">
@@ -618,6 +642,7 @@ function Index() {
                   setShowTieModal(false);
                   setTieOrder([]);
                   setSelectedTiePlayerId(null);
+                  setHasDismissedTie(true);
                 }}
                 className="px-4 py-2 rounded-xl text-sm font-medium bg-white/10 hover:bg-white/15 transition"
               >
