@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Plus, RotateCcw, Trophy, UserPlus, UserMinus, Pencil, Trash2 } from "lucide-react";
+import { Plus, RotateCcw, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
 import { Calculator } from "@/components/Calculator";
 
 export const Route = createFileRoute("/")({
@@ -58,7 +58,6 @@ function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, {
     .map((p, i) => ({ id: p.id, total: totals[i] }))
     .sort((a, b) => {
       if (a.total !== b.total) return a.total - b.total;
-      // Gunakan tieOrder untuk memecah seri di semua posisi
       const aIdx = tieOrder.indexOf(a.id);
       const bIdx = tieOrder.indexOf(b.id);
       if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
@@ -67,16 +66,13 @@ function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, {
       return 0;
     });
 
-  // Cek apakah pemenang (poin paling kecil) poinnya <= 10
   const isSuperTier = ranked[0].total <= 10;
 
   if (isSuperTier) {
     ranked.forEach((entry, rank) => {
       if (rank === 0) {
-        // Pemenang Super Tier
         result.set(entry.id, { tier: 0, amount: 24000 });
       } else {
-        // Loser Super Tier (selalu -8.000)
         result.set(entry.id, { tier: rank, amount: -8000 });
       }
     });
@@ -91,107 +87,6 @@ function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, {
   }
 
   return result;
-}
-
-/** Komponen riwayat skor per kolom — scroll otomatis ke bawah */
-function ScoreHistory({ scores, color, showR, rIndex, onEdit, onDeleteLast }: { scores: number[]; color: string; showR?: boolean; rIndex?: number; onEdit?: (index: number) => void; onDeleteLast?: () => void }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [scores.length]);
-
-  if (scores.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <span className="text-xs opacity-20">—</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 w-full overflow-y-auto px-1 py-1" style={{ minHeight: 0 }}>
-      {scores.map((s, idx) => {
-        const isLast = idx === scores.length - 1;
-        let touchTimer: NodeJS.Timeout;
-        let startX = 0;
-        let currentX = 0;
-        let isSwiping = false;
-
-        const handleStart = (e: React.TouchEvent | React.MouseEvent) => {
-          if ('touches' in e) {
-            startX = e.touches[0].clientX;
-          }
-          isSwiping = false;
-          touchTimer = setTimeout(() => {
-            if (!isSwiping && onEdit) onEdit(idx);
-          }, 500);
-        };
-
-        const handleMove = (e: React.TouchEvent) => {
-          if (!isLast) return;
-          currentX = e.touches[0].clientX;
-          const diff = startX - currentX;
-          if (diff > 10) {
-            isSwiping = true;
-            clearTimeout(touchTimer);
-            const el = e.currentTarget as HTMLDivElement;
-            el.style.transition = 'none';
-            el.style.transform = `translateX(-${Math.min(diff, 80)}px)`;
-            el.style.opacity = `${1 - Math.min(diff, 80) / 80}`;
-          }
-        };
-
-        const handleEnd = (e: React.TouchEvent | React.MouseEvent) => {
-          clearTimeout(touchTimer);
-          if (isLast && isSwiping) {
-            const diff = startX - currentX;
-            const el = e.currentTarget as HTMLDivElement;
-            el.style.transition = 'all 0.2s';
-            if (diff > 50 && onDeleteLast) {
-              onDeleteLast();
-            } else {
-              el.style.transform = `translateX(0)`;
-              el.style.opacity = `1`;
-            }
-          }
-          isSwiping = false;
-        };
-
-        return (
-          <div
-            key={idx}
-            className={`flex items-center justify-center py-1.5 cursor-pointer active:bg-white/5 rounded-lg mx-1 relative ${isLast ? 'score-enter' : ''}`}
-            onTouchStart={handleStart}
-            onTouchMove={handleMove}
-            onTouchEnd={handleEnd}
-            onMouseDown={handleStart}
-            onMouseUp={handleEnd}
-            onMouseLeave={handleEnd}
-            onContextMenu={(e) => { e.preventDefault(); handleStart(e); }}
-          >
-            <div className="relative inline-flex items-center justify-center">
-              <span
-                className="text-3xl font-bold tracking-tight select-none"
-                style={{ color, opacity: s === 0 ? 0 : 1 }}
-              >
-                {s === 0 ? "0" : s}
-              </span>
-              {showR && idx === rIndex && (
-                <div
-                  className="absolute -right-5 top-1/2 -translate-y-1/2 flex items-center justify-center bg-orange-500 rounded-full w-[18px] h-[18px]"
-                  title="Skor Terkecil"
-                >
-                  <span className="text-white text-[10px] font-black leading-none">R</span>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
-      <div ref={bottomRef} className="h-2" />
-    </div>
-  );
 }
 
 function Index() {
@@ -490,151 +385,152 @@ function Index() {
     setPlayers((prev) => prev.slice(0, -1));
   };
 
+  const maxRounds = Math.max(0, ...players.map(p => p.scores.length));
+  const historyBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    historyBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [maxRounds]);
+
   if (!loaded) return null;
 
+
   return (
-    <div className="h-dvh bg-background text-foreground flex flex-col overflow-hidden">
+    <div className="h-dvh flex flex-col overflow-hidden" style={{ background: '#0A0E1A', color: '#E8ECF4' }}>
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0">
-        <h1 className="text-lg font-semibold tracking-tight">Domino Score</h1>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={removePlayer}
-            disabled={players.length <= 1}
-            className="p-2 rounded-lg hover:bg-white/5 disabled:opacity-30"
-            aria-label="Hapus pemain"
-          >
-            <UserMinus className="w-5 h-5" />
-          </button>
-          <button
-            onClick={addPlayer}
-            disabled={players.length >= 4}
-            className="p-2 rounded-lg hover:bg-white/5 disabled:opacity-30"
-            aria-label="Tambah pemain"
-          >
-            <UserPlus className="w-5 h-5" />
-          </button>
-          <button
-            onClick={resetAll}
-            className="p-2 rounded-lg hover:bg-white/5"
-            aria-label="Reset Semua (Skor, Piala, Saldo)"
-          >
-            <Trash2 className="w-5 h-5 text-[var(--calc-red)] opacity-70" />
-          </button>
-          <button
-            onClick={reset}
-            className="p-2 rounded-lg hover:bg-white/5"
-            aria-label="Reset"
-          >
-            <RotateCcw className="w-5 h-5 text-[var(--calc-red)]" />
-          </button>
+      <header className="app-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1>Domino Score</h1>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <button onClick={removePlayer} disabled={players.length <= 1} className="header-btn" aria-label="Hapus pemain"><UserMinus style={{ width: 20, height: 20 }} /></button>
+          <button onClick={addPlayer} disabled={players.length >= 4} className="header-btn" aria-label="Tambah pemain"><UserPlus style={{ width: 20, height: 20 }} /></button>
+          <button onClick={resetAll} className="header-btn" aria-label="Reset Semua"><Trash2 style={{ width: 20, height: 20, color: 'var(--calc-red)', opacity: 0.7 }} /></button>
+          <button onClick={reset} className="header-btn" aria-label="Reset"><RotateCcw style={{ width: 20, height: 20, color: 'var(--calc-red)' }} /></button>
         </div>
       </header>
 
-      {/* Players — full height grid */}
-      <main
-        className="flex-1 grid overflow-hidden"
-        style={{ gridTemplateColumns: `repeat(${players.length}, minmax(0,1fr))` }}
-      >
+      {/* Scrollable Content Area */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', minHeight: 0 }}>
+        {/* Player Summary Cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${players.length}, 1fr)`, gap: 8, marginBottom: 12 }}>
+          {players.map((p, i) => {
+            const color = COLORS[i];
+            const t = total(p);
+            const tierInfo = tiers.get(p.id);
+            const bal = typeof p.balance === 'number' && !isNaN(p.balance) ? p.balance : 0;
+            const projBal = bal + (tierInfo?.amount ?? 0);
+            const isDanger = t >= 40 && t < 51;
+            const someoneAbove30 = totals.some(tt => tt >= 30);
+            const isSTC = t <= 10 && t > 0 && someoneAbove30;
+            return (
+              <div key={p.id} className="player-card" style={{ '--card-accent-color': color, boxShadow: `0 0 20px color-mix(in srgb, ${color} 8%, transparent), 0 0 40px color-mix(in srgb, ${color} 4%, transparent)` } as React.CSSProperties}>
+                <div className="card-name-row">
+                  {editingId === p.id ? (
+                    <input autoFocus value={p.name} onChange={e => renamePlayer(p.id, e.target.value)} onBlur={() => setEditingId(null)} onKeyDown={e => e.key === 'Enter' && setEditingId(null)} className="name-edit-input" style={{ color }} />
+                  ) : (
+                    <button onClick={() => setEditingId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', color }}>
+                      <span className="card-name">{p.name}</span>
+                      <Pencil style={{ width: 11, height: 11, opacity: 0.4 }} />
+                    </button>
+                  )}
+                </div>
+                <div className="card-trophy" style={{ backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)`, color }}>
+                  <Trophy style={{ width: 13, height: 13 }} />{p.wins}
+                </div>
+                <div className="card-balance" style={{ color: projBal >= 0 ? 'var(--calc-green)' : 'var(--calc-red)', minHeight: 14 }}>
+                  {(bal !== 0 || tierInfo) ? <>{projBal > 0 ? '+' : ''}{formatRupiah(projBal)}</> : null}
+                </div>
+                <div className={`card-total ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`} style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}>{t}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Game History Table */}
+        <div className="history-container">
+          <div className="history-header">
+            <span className="history-title">Riwayat Permainan</span>
+            <span className="history-subtitle">Total Poin</span>
+          </div>
+          {maxRounds > 0 && (
+            <div className="history-scroll" style={{ maxHeight: 'calc(100dvh - 420px)' }}>
+              <table className="history-table">
+                <thead><tr>
+                  <th></th>
+                  {players.map((_, i) => (
+                    <th key={i}><div className="player-icon-header" style={{ background: `color-mix(in srgb, ${COLORS[i]} 25%, transparent)` }}><User style={{ width: 14, height: 14, color: COLORS[i] }} /></div></th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {Array.from({ length: maxRounds }, (_, ri) => {
+                    const isLastRound = ri === maxRounds - 1;
+                    return (
+                      <tr key={ri} className={isLastRound ? 'row-enter' : ''}>
+                        <td>{ri + 1}</td>
+                        {players.map((p, pi) => {
+                          if (ri >= p.scores.length) return <td key={p.id}></td>;
+                          const s = p.scores[ri];
+                          const isPlayerLast = ri === p.scores.length - 1;
+                          const showR = p.id === lastBlokWinnerId && ri === lastBlokRowIndex;
+                          let touchTimer: ReturnType<typeof setTimeout>;
+                          let startX = 0, currentX = 0, isSwiping = false;
+                          const onStart = (e: React.TouchEvent | React.MouseEvent) => {
+                            if ('touches' in e) startX = e.touches[0].clientX;
+                            isSwiping = false;
+                            touchTimer = setTimeout(() => { if (!isSwiping) setEditingScore({ playerId: p.id, index: ri, score: s }); }, 500);
+                          };
+                          const onMove = (e: React.TouchEvent) => {
+                            if (!isPlayerLast) return;
+                            currentX = e.touches[0].clientX;
+                            const d = startX - currentX;
+                            if (d > 10) { isSwiping = true; clearTimeout(touchTimer); const el = e.currentTarget as HTMLElement; el.style.transition = 'none'; el.style.transform = `translateX(-${Math.min(d, 80)}px)`; el.style.opacity = `${1 - Math.min(d, 80) / 80}`; }
+                          };
+                          const onEnd = (e: React.TouchEvent | React.MouseEvent) => {
+                            clearTimeout(touchTimer);
+                            if (isPlayerLast && isSwiping) { const d = startX - currentX; const el = e.currentTarget as HTMLElement; el.style.transition = 'all 0.2s'; if (d > 50) { handleDeleteLast(p.id); } else { el.style.transform = 'translateX(0)'; el.style.opacity = '1'; } }
+                            isSwiping = false;
+                          };
+                          return (
+                            <td key={p.id} className="score-cell" onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onMouseDown={onStart} onMouseUp={onEnd} onMouseLeave={onEnd} onContextMenu={e => { e.preventDefault(); onStart(e); }}>
+                              <span style={{ color: COLORS[pi] }}>{s === 0 ? <span className="score-dash">-</span> : s}</span>
+                              {showR && <span className="r-badge">R</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div ref={historyBottomRef} style={{ height: 4 }} />
+            </div>
+          )}
+          {maxRounds === 0 && (
+            <div style={{ padding: '32px 0', textAlign: 'center', opacity: 0.2, fontSize: 14 }}>Belum ada riwayat</div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Quick Action Bar */}
+      <div className="quick-action-bar">
         {players.map((p, i) => {
-          const color = COLORS[i];
           const t = total(p);
-          const tierInfo = tiers.get(p.id);
-          const balance = typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0;
-
-          // Animasi: cek apakah ada pemain lain yang sudah >= 30
-          const someoneAbove30 = totals.some((tt) => tt >= 30);
-          const isSuperTierCandidate = t <= 10 && t > 0 && someoneAbove30;
+          const color = COLORS[i];
           const isDanger = t >= 40 && t < 51;
-
+          const someoneAbove30 = totals.some(tt => tt >= 30);
+          const isSTC = t <= 10 && t > 0 && someoneAbove30;
           return (
-            <div
-              key={p.id}
-              className="flex flex-col items-center pt-3 pb-3 border-r last:border-r-0 border-white/5 overflow-hidden"
-            >
-              {/* Name */}
-              <div className="flex items-center gap-1 mb-1 shrink-0">
-                {editingId === p.id ? (
-                  <input
-                    autoFocus
-                    value={p.name}
-                    onChange={(e) => renamePlayer(p.id, e.target.value)}
-                    onBlur={() => setEditingId(null)}
-                    onKeyDown={(e) => e.key === "Enter" && setEditingId(null)}
-                    className="bg-transparent border-b border-white/20 text-center text-xl font-bold w-24 outline-none"
-                    style={{ color }}
-                  />
-                ) : (
-                  <button
-                    onClick={() => setEditingId(p.id)}
-                    className="flex items-center gap-1 text-xl font-bold leading-tight"
-                    style={{ color }}
-                  >
-                    <span className="truncate max-w-[85px]">{p.name}</span>
-                    <Pencil className="w-4 h-4 opacity-40 shrink-0" />
-                  </button>
-                )}
-              </div>
-
-              {/* Trophy badge */}
-              <div
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-base font-bold shrink-0 mt-1"
-                style={{ backgroundColor: `color-mix(in oklab, ${color} 20%, transparent)`, color }}
-              >
-                <Trophy className="w-5 h-5" />
-                {p.wins}
-              </div>
-
-              {/* Saldo Rp — akumulasi, muncul selalu jika > 0 atau game sedang selesai */}
-              <div className="mt-1 shrink-0 h-5 flex items-center justify-center w-full px-1 overflow-visible">
-                {(balance !== 0 || tierInfo) && (
-                  <span
-                    className="text-[15px] font-bold tabular-nums whitespace-nowrap tracking-tight"
-                    style={{
-                      color: (balance + (tierInfo?.amount ?? 0)) >= 0
-                        ? "var(--calc-green)"
-                        : "var(--calc-red)",
-                    }}
-                  >
-                    {(balance + (tierInfo?.amount ?? 0)) > 0 ? "+" : ""}
-                    {formatRupiah(balance + (tierInfo?.amount ?? 0))}
-                  </span>
-                )}
-              </div>
-
-              {/* Riwayat skor — scrollable, mengisi ruang tengah */}
-              <ScoreHistory
-                scores={p.scores}
-                color={color}
-                showR={p.id === lastBlokWinnerId}
-                rIndex={lastBlokRowIndex}
-                onEdit={(idx) => setEditingScore({ playerId: p.id, index: idx, score: p.scores[idx] })}
-                onDeleteLast={() => handleDeleteLast(p.id)}
-              />
-
-              {/* Add button */}
-              <button
-                onClick={() => setCalcFor(p.id)}
-                className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition shrink-0"
-                style={{ backgroundColor: color }}
-                aria-label="Tambah skor"
-              >
-                <Plus className="w-7 h-7 text-white" />
+            <div key={p.id} className="action-item">
+              <button className="fab-btn" onClick={() => setCalcFor(p.id)} style={{ backgroundColor: color }} aria-label={`Tambah skor ${p.name}`}>
+                <Plus style={{ width: 24, height: 24, color: '#fff' }} />
               </button>
-
-              {/* Total skor */}
-              <div
-                className={`mt-1 text-4xl font-bold tabular-nums shrink-0 ${isDanger ? 'danger-pulse' : ''} ${isSuperTierCandidate ? 'super-glow' : ''}`}
-                style={{
-                  color: t >= 40 ? "var(--calc-red)" : t <= 10 && t > 0 ? "#ffffff" : color,
-                }}
-              >
-                {t}
-              </div>
+              <span className="action-name" style={{ color }}>{p.name.length > 3 ? p.name.substring(0, 3) : p.name}</span>
+              <span className={`action-total ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`} style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}>{t}</span>
             </div>
           );
         })}
-      </main>
+      </div>
 
       {/* Reset Confirmation Modal */}
       {showResetModal && (
