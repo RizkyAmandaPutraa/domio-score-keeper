@@ -26,6 +26,8 @@ interface GameSettings {
   loser1: number;
   loser2: number;
   loser3: number;
+  aligAmount: number;
+  aligThreshold: number;
 }
 
 interface MatchResult {
@@ -57,6 +59,8 @@ const DEFAULT_SETTINGS: GameSettings = {
   loser1: 6000,
   loser2: 5000,
   loser3: 4000,
+  aligAmount: 8000,
+  aligThreshold: 11,
 };
 const COLORS = [
   "var(--player-1)",
@@ -70,11 +74,12 @@ function makePlayer(i: number): Player {
 }
 
 function formatRupiah(amount: number): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(amount);
+  }).format(safeAmount);
 }
 
 function formatRupiahInput(amount: number): string {
@@ -94,6 +99,8 @@ function normalizeSettings(value?: Partial<GameSettings>): GameSettings {
     loser1: typeof value?.loser1 === "number" && !isNaN(value.loser1) ? value.loser1 : DEFAULT_SETTINGS.loser1,
     loser2: typeof value?.loser2 === "number" && !isNaN(value.loser2) ? value.loser2 : DEFAULT_SETTINGS.loser2,
     loser3: typeof value?.loser3 === "number" && !isNaN(value.loser3) ? value.loser3 : DEFAULT_SETTINGS.loser3,
+    aligAmount: typeof value?.aligAmount === "number" && !isNaN(value.aligAmount) ? value.aligAmount : DEFAULT_SETTINGS.aligAmount,
+    aligThreshold: typeof value?.aligThreshold === "number" && !isNaN(value.aligThreshold) ? value.aligThreshold : DEFAULT_SETTINGS.aligThreshold,
   };
 
   if (
@@ -108,7 +115,11 @@ function normalizeSettings(value?: Partial<GameSettings>): GameSettings {
   return normalized;
 }
 
-function getTierPayments(settings: GameSettings, playerCount: number): number[] {
+function getTierPayments(settings: GameSettings, playerCount: number, isAlig = false): number[] {
+  if (isAlig) {
+    return [settings.aligAmount * Math.max(0, playerCount - 1), ...Array.from({ length: Math.max(0, playerCount - 1) }, () => -settings.aligAmount)];
+  }
+
   return [settings.winner, -settings.loser3, -settings.loser2, -settings.loser1].slice(0, playerCount);
 }
 
@@ -161,7 +172,8 @@ function computeTiers(players: Player[], settings: GameSettings, tieOrder: strin
       return 0;
     });
 
-  const tierPayments = getTierPayments(settings, players.length);
+  const isAlig = ranked[0]?.total < settings.aligThreshold;
+  const tierPayments = getTierPayments(settings, players.length, isAlig);
   ranked.forEach((entry, rank) => {
     const tierIndex = Math.min(rank, players.length - 1);
     if (tierIndex >= players.length) return;
@@ -189,6 +201,7 @@ function Index() {
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [matchHistory, setMatchHistory] = useState<MatchEntry[]>([]);
   const [recapMode, setRecapMode] = useState<"off" | "every5">("off");
+  const [lastAutoRecapRound, setLastAutoRecapRound] = useState(0);
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [hasDismissedTie, setHasDismissedTie] = useState(false);
 
@@ -251,9 +264,19 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify({ players, settings, matchHistory, recapMode }));
+    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify({ players, settings: normalizeSettings(settings), matchHistory, recapMode }));
   }, [players, settings, matchHistory, recapMode, loaded]);
 
+  useEffect(() => {
+    if (recapMode !== "every5") return;
+    const completedRounds = matchHistory.length;
+    if (completedRounds > 0 && completedRounds % 5 === 0 && completedRounds !== lastAutoRecapRound) {
+      setLastAutoRecapRound(completedRounds);
+      setShowRecapModal(true);
+    }
+  }, [matchHistory.length, recapMode, lastAutoRecapRound]);
+
+  const gameSettings = normalizeSettings(settings);
   const total = (p: Player) => p.scores.reduce((a, b) => a + b, 0);
 
   // Cek apakah game sudah selesai: ada pemain yang mencapai >= 51
@@ -265,7 +288,7 @@ function Index() {
   // Pemenang = pemain dengan skor terendah saat game selesai
   const minTotal = gameFinished ? Math.min(...totals) : Infinity;
 
-  const tiers = computeTiers(players, settings, tieOrder);
+  const tiers = computeTiers(players, gameSettings, tieOrder);
 
   // --- Deteksi tie yang belum diresolved di SEMUA posisi ---
   const allSameRounds = roundCounts.length > 0 && roundCounts.every((c) => c === roundCounts[0]);
@@ -285,7 +308,8 @@ function Index() {
         return 0;
       });
 
-    const tierPayments = getTierPayments(settings, players.length);
+    const isAlig = ranked[0]?.total < gameSettings.aligThreshold;
+    const tierPayments = getTierPayments(gameSettings, players.length, isAlig);
 
     let i = 0;
     while (i < ranked.length) {
@@ -373,7 +397,7 @@ function Index() {
   // Auto-reset ketika semua tie sudah resolved
   useEffect(() => {
     if (gameFinished && allSameRounds && !unresolvedTie && tieOrder.length > 0) {
-      const finalTiers = computeTiers(players, settings, tieOrder);
+      const finalTiers = computeTiers(players, gameSettings, tieOrder);
       recordFinishedGame(finalTiers);
       setPlayers((prev) =>
         prev.map((p) => {
@@ -443,9 +467,6 @@ function Index() {
     const nextRound = matchHistory.length + 1;
     const entry = buildMatchEntry(players, finalTiers, nextRound);
     setMatchHistory((prev) => [...prev, { ...entry, round: prev.length + 1 }]);
-    if (recapMode === "every5" && nextRound % 5 === 0) {
-      setShowRecapModal(true);
-    }
   };
 
   const reset = () => {
@@ -526,6 +547,9 @@ function Index() {
   }, [maxRounds]);
 
   const recapEntries = matchHistory.slice(-5);
+  const recapProgress = matchHistory.length % 5;
+  const recapProgressDisplay = recapMode === "every5" && matchHistory.length > 0 && recapProgress === 0 ? 5 : recapProgress;
+  const historySubtitle = recapMode === "every5" ? `${recapProgressDisplay}/5 Ronde` : "Total Poin";
   const recapStats = players.map((p) => {
     const results = recapEntries
       .map((entry) => entry.results.find((result) => result.playerId === p.id || result.name === p.name))
@@ -592,20 +616,29 @@ function Index() {
               </div>
               <label className="settings-field">
                 <span>Kemenangan</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.winner)} onChange={(e) => updateSetting("winner", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.winner)} onChange={(e) => updateSetting("winner", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 1</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser1)} onChange={(e) => updateSetting("loser1", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser1)} onChange={(e) => updateSetting("loser1", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 2</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser2)} onChange={(e) => updateSetting("loser2", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser2)} onChange={(e) => updateSetting("loser2", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 3</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser3)} onChange={(e) => updateSetting("loser3", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser3)} onChange={(e) => updateSetting("loser3", e.target.value)} />
               </label>
+              <label className="settings-field">
+                <span>Alig</span>
+                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.aligAmount)} onChange={(e) => updateSetting("aligAmount", e.target.value)} />
+              </label>
+              <label className="settings-field">
+                <span>Minimal Alig</span>
+                <input type="text" inputMode="numeric" value={gameSettings.aligThreshold} onChange={(e) => updateSetting("aligThreshold", e.target.value)} />
+              </label>
+              <p className="settings-help">Alig aktif jika total pemenang di bawah batas ini. Default: di bawah 11.</p>
               <button className="settings-secondary-btn" onClick={() => setSettings(DEFAULT_SETTINGS)}>Reset Nominal Default</button>
             </div>
 
@@ -674,7 +707,7 @@ function Index() {
         <div className="history-container">
           <div className="history-header">
             <span className="history-title">Riwayat Permainan</span>
-            <span className="history-subtitle">Total Poin</span>
+            <span className="history-subtitle">{historySubtitle}</span>
           </div>
           {maxRounds > 0 && (
             <div className="history-scroll" style={{ maxHeight: 'calc(100dvh - 420px)' }}>
