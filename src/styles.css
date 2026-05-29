@@ -387,9 +387,9 @@
 }
 
 .history-table tbody td {
-  padding: 8px 4px;
+  padding: 9px 4px;
   text-align: center;
-  font-size: 18px;
+  font-size: 21px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;

@@ -77,6 +77,10 @@ function formatRupiah(amount: number): string {
   }).format(amount);
 }
 
+function formatRupiahInput(amount: number): string {
+  return formatRupiah(amount).replace(/\s/g, " ");
+}
+
 function formatCompactRupiah(amount: number): string {
   const abs = Math.abs(amount);
   if (abs >= 1000) return `${amount < 0 ? "-" : "+"}${Math.round(abs / 1000)}K`;
@@ -430,7 +434,7 @@ function Index() {
   };
 
   const updateSetting = (key: keyof GameSettings, value: string) => {
-    const parsed = Math.max(0, Number(value) || 0);
+    const parsed = Math.max(0, Number(value.replace(/\D/g, "")) || 0);
     setSettings((prev) => ({ ...prev, [key]: parsed }));
   };
 
@@ -588,19 +592,19 @@ function Index() {
               </div>
               <label className="settings-field">
                 <span>Kemenangan</span>
-                <input type="number" inputMode="numeric" value={settings.winner} onChange={(e) => updateSetting("winner", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.winner)} onChange={(e) => updateSetting("winner", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 1</span>
-                <input type="number" inputMode="numeric" value={settings.loser1} onChange={(e) => updateSetting("loser1", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser1)} onChange={(e) => updateSetting("loser1", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 2</span>
-                <input type="number" inputMode="numeric" value={settings.loser2} onChange={(e) => updateSetting("loser2", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser2)} onChange={(e) => updateSetting("loser2", e.target.value)} />
               </label>
               <label className="settings-field">
                 <span>Kalah 3</span>
-                <input type="number" inputMode="numeric" value={settings.loser3} onChange={(e) => updateSetting("loser3", e.target.value)} />
+                <input type="text" inputMode="numeric" value={formatRupiahInput(settings.loser3)} onChange={(e) => updateSetting("loser3", e.target.value)} />
               </label>
               <button className="settings-secondary-btn" onClick={() => setSettings(DEFAULT_SETTINGS)}>Reset Nominal Default</button>
             </div>
