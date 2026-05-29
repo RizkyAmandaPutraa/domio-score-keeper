@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Menu, Plus, RotateCcw, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ClipboardList, Menu, Plus, RotateCcw, Settings, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
 import { Calculator } from "@/components/Calculator";
 
 export const Route = createFileRoute("/")({
@@ -21,7 +21,43 @@ interface Player {
   balance: number; // akumulasi saldo Rp (tidak direset)
 }
 
-const STORAGE_KEY = "domino-score-state-v2";
+interface GameSettings {
+  winner: number;
+  loser1: number;
+  loser2: number;
+  loser3: number;
+}
+
+interface MatchResult {
+  playerId: string;
+  name: string;
+  total: number;
+  tier: number;
+  amount: number;
+}
+
+interface MatchEntry {
+  id: string;
+  round: number;
+  createdAt: string;
+  results: MatchResult[];
+}
+
+interface StoredState {
+  players: Player[];
+  settings: GameSettings;
+  matchHistory: MatchEntry[];
+  recapMode: "off" | "every5";
+}
+
+const STORAGE_KEY = "domino-score-state-v3";
+const LEGACY_STORAGE_KEY = "domino-score-state-v2";
+const DEFAULT_SETTINGS: GameSettings = {
+  winner: 15000,
+  loser1: 6000,
+  loser2: 5000,
+  loser3: 4000,
+};
 const COLORS = [
   "var(--player-1)",
   "var(--player-2)",
@@ -48,6 +84,54 @@ function formatCompactRupiah(amount: number): string {
   return `${amount > 0 ? "+" : "-"}${abs}`;
 }
 
+function normalizeSettings(value?: Partial<GameSettings>): GameSettings {
+  const normalized = {
+    winner: typeof value?.winner === "number" && !isNaN(value.winner) ? value.winner : DEFAULT_SETTINGS.winner,
+    loser1: typeof value?.loser1 === "number" && !isNaN(value.loser1) ? value.loser1 : DEFAULT_SETTINGS.loser1,
+    loser2: typeof value?.loser2 === "number" && !isNaN(value.loser2) ? value.loser2 : DEFAULT_SETTINGS.loser2,
+    loser3: typeof value?.loser3 === "number" && !isNaN(value.loser3) ? value.loser3 : DEFAULT_SETTINGS.loser3,
+  };
+
+  if (
+    normalized.winner === 15000 &&
+    normalized.loser1 === 4000 &&
+    normalized.loser2 === 5000 &&
+    normalized.loser3 === 6000
+  ) {
+    return DEFAULT_SETTINGS;
+  }
+
+  return normalized;
+}
+
+function getTierPayments(settings: GameSettings, playerCount: number): number[] {
+  return [settings.winner, -settings.loser3, -settings.loser2, -settings.loser1].slice(0, playerCount);
+}
+
+function buildMatchEntry(players: Player[], tiers: Map<string, { tier: number; amount: number }>, round: number): MatchEntry {
+  return {
+    id: crypto.randomUUID(),
+    round,
+    createdAt: new Date().toISOString(),
+    results: players.map((p) => {
+      const tierInfo = tiers.get(p.id);
+      return {
+        playerId: p.id,
+        name: p.name,
+        total: p.scores.reduce((a, b) => a + b, 0),
+        tier: tierInfo?.tier ?? 0,
+        amount: tierInfo?.amount ?? 0,
+      };
+    }),
+  };
+}
+
+function getResultLabel(tier: number, playerCount: number): string {
+  if (tier === 1) return "Menang";
+  const lossLevel = playerCount - tier + 1;
+  return `Kalah ${lossLevel}`;
+}
+
 /**
  * Hitung tier setiap pemain berdasarkan total skor.
  * Tier 1 (pemenang) = total terkecil  → +Rp 15.000
@@ -55,7 +139,7 @@ function formatCompactRupiah(amount: number): string {
  * Tier 3            = total ke-3 terkecil → -Rp 5.000
  * Tier 4            = total terbesar      → -Rp 6.000
  */
-function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, { tier: number; amount: number }> {
+function computeTiers(players: Player[], settings: GameSettings, tieOrder: string[] = []): Map<string, { tier: number; amount: number }> {
   const result = new Map<string, { tier: number; amount: number }>();
   const totals = players.map((p) => p.scores.reduce((a, b) => a + b, 0));
   const someoneReached51 = totals.some((t) => t >= 51);
@@ -73,25 +157,13 @@ function computeTiers(players: Player[], tieOrder: string[] = []): Map<string, {
       return 0;
     });
 
-  const isSuperTier = ranked[0].total <= 10;
-
-  if (isSuperTier) {
-    ranked.forEach((entry, rank) => {
-      if (rank === 0) {
-        result.set(entry.id, { tier: 0, amount: 24000 });
-      } else {
-        result.set(entry.id, { tier: rank, amount: -8000 });
-      }
-    });
-  } else {
-    const tierPayments = [15000, -4000, -5000, -6000];
-    ranked.forEach((entry, rank) => {
-      const tierIndex = Math.min(rank, players.length - 1);
-      if (tierIndex >= players.length) return;
-      const payment = tierIndex < tierPayments.length ? tierPayments[tierIndex] : -6000;
-      result.set(entry.id, { tier: tierIndex + 1, amount: payment });
-    });
-  }
+  const tierPayments = getTierPayments(settings, players.length);
+  ranked.forEach((entry, rank) => {
+    const tierIndex = Math.min(rank, players.length - 1);
+    if (tierIndex >= players.length) return;
+    const payment = tierPayments[tierIndex] ?? -settings.loser3;
+    result.set(entry.id, { tier: tierIndex + 1, amount: payment });
+  });
 
   return result;
 }
@@ -104,10 +176,15 @@ function Index() {
   const [editingScore, setEditingScore] = useState<{ playerId: string; index: number; score: number } | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [showResetAllModal, setShowResetAllModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showRecapModal, setShowRecapModal] = useState(false);
   const [currentBatch, setCurrentBatch] = useState<string[]>([]);
   const [showTieModal, setShowTieModal] = useState(false);
   const [tieOrder, setTieOrder] = useState<string[]>([]);
   const [selectedTiePlayerId, setSelectedTiePlayerId] = useState<string | null>(null);
+  const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
+  const [matchHistory, setMatchHistory] = useState<MatchEntry[]>([]);
+  const [recapMode, setRecapMode] = useState<"off" | "every5">("off");
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [hasDismissedTie, setHasDismissedTie] = useState(false);
 
@@ -115,7 +192,7 @@ function Index() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as Player[];
+        const parsed = JSON.parse(raw) as StoredState | Player[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           // Normalize: pastikan semua field baru ada nilainya
           const normalized = parsed.map((p) => ({
@@ -124,6 +201,22 @@ function Index() {
             balance: typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0,
           }));
           setPlayers(normalized);
+          setSettings(DEFAULT_SETTINGS);
+          setMatchHistory([]);
+          setRecapMode("off");
+          setLoaded(true);
+          return;
+        }
+        if (!Array.isArray(parsed) && Array.isArray(parsed.players) && parsed.players.length > 0) {
+          const normalized = parsed.players.map((p) => ({
+            ...p,
+            wins: typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0,
+            balance: typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0,
+          }));
+          setPlayers(normalized);
+          setSettings(normalizeSettings(parsed.settings));
+          setMatchHistory(Array.isArray(parsed.matchHistory) ? parsed.matchHistory : []);
+          setRecapMode(parsed.recapMode === "every5" ? "every5" : "off");
           setLoaded(true);
           return;
         }
@@ -131,7 +224,7 @@ function Index() {
     } catch { }
     // Coba migrate dari key lama
     try {
-      const oldRaw = localStorage.getItem("domino-score-state-v1");
+      const oldRaw = localStorage.getItem(LEGACY_STORAGE_KEY) ?? localStorage.getItem("domino-score-state-v1");
       if (oldRaw) {
         const parsed = JSON.parse(oldRaw) as Player[];
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -141,6 +234,9 @@ function Index() {
             balance: 0,
           }));
           setPlayers(migrated);
+          setSettings(DEFAULT_SETTINGS);
+          setMatchHistory([]);
+          setRecapMode("off");
           setLoaded(true);
           return;
         }
@@ -151,8 +247,8 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
-  }, [players, loaded]);
+    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify({ players, settings, matchHistory, recapMode }));
+  }, [players, settings, matchHistory, recapMode, loaded]);
 
   const total = (p: Player) => p.scores.reduce((a, b) => a + b, 0);
 
@@ -165,7 +261,7 @@ function Index() {
   // Pemenang = pemain dengan skor terendah saat game selesai
   const minTotal = gameFinished ? Math.min(...totals) : Infinity;
 
-  const tiers = computeTiers(players, tieOrder);
+  const tiers = computeTiers(players, settings, tieOrder);
 
   // --- Deteksi tie yang belum diresolved di SEMUA posisi ---
   const allSameRounds = roundCounts.length > 0 && roundCounts.every((c) => c === roundCounts[0]);
@@ -185,10 +281,7 @@ function Index() {
         return 0;
       });
 
-    const isSuperTier = ranked[0].total <= 10;
-    const tierPayments = isSuperTier
-      ? [24000, -8000, -8000, -8000].slice(0, players.length)
-      : [15000, -4000, -5000, -6000].slice(0, players.length);
+    const tierPayments = getTierPayments(settings, players.length);
 
     let i = 0;
     while (i < ranked.length) {
@@ -276,7 +369,8 @@ function Index() {
   // Auto-reset ketika semua tie sudah resolved
   useEffect(() => {
     if (gameFinished && allSameRounds && !unresolvedTie && tieOrder.length > 0) {
-      const finalTiers = computeTiers(players, tieOrder);
+      const finalTiers = computeTiers(players, settings, tieOrder);
+      recordFinishedGame(finalTiers);
       setPlayers((prev) =>
         prev.map((p) => {
           const currentWins = typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0;
@@ -335,6 +429,21 @@ function Index() {
     setPlayers((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
   };
 
+  const updateSetting = (key: keyof GameSettings, value: string) => {
+    const parsed = Math.max(0, Number(value) || 0);
+    setSettings((prev) => ({ ...prev, [key]: parsed }));
+  };
+
+  const recordFinishedGame = (finalTiers: Map<string, { tier: number; amount: number }>) => {
+    if (!gameFinished) return;
+    const nextRound = matchHistory.length + 1;
+    const entry = buildMatchEntry(players, finalTiers, nextRound);
+    setMatchHistory((prev) => [...prev, { ...entry, round: prev.length + 1 }]);
+    if (recapMode === "every5" && nextRound % 5 === 0) {
+      setShowRecapModal(true);
+    }
+  };
+
   const reset = () => {
     setShowResetModal(true);
   };
@@ -368,6 +477,7 @@ function Index() {
         };
       })
     );
+    if (gameFinished) recordFinishedGame(tiers);
     setShowResetModal(false);
     setTieOrder([]);
   };
@@ -389,6 +499,8 @@ function Index() {
         balance: 0,
       }))
     );
+    setMatchHistory([]);
+    setShowRecapModal(false);
     setShowResetAllModal(false);
   };
 
@@ -408,6 +520,19 @@ function Index() {
   useEffect(() => {
     historyBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [maxRounds]);
+
+  const recapEntries = matchHistory.slice(-5);
+  const recapStats = players.map((p) => {
+    const results = recapEntries
+      .map((entry) => entry.results.find((result) => result.playerId === p.id || result.name === p.name))
+      .filter((result): result is MatchResult => Boolean(result));
+    return {
+      player: p,
+      wins: results.filter((result) => result.tier === 1).length,
+      losses: results.filter((result) => result.tier > 1).length,
+      balance: results.reduce((sum, result) => sum + result.amount, 0),
+    };
+  });
 
   if (!loaded) return null;
 
@@ -431,7 +556,7 @@ function Index() {
       {/* Header */}
       <header className="app-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="header-btn header-menu-btn" aria-label="Menu">
+          <button onClick={() => setShowSettingsModal(true)} className="header-btn header-menu-btn" aria-label="Menu">
             <Menu style={{ width: 20, height: 20 }} />
           </button>
           <h1>Domino Score</h1>
@@ -443,6 +568,60 @@ function Index() {
           <button onClick={reset} className="header-btn" aria-label="Reset"><RotateCcw style={{ width: 20, height: 20, color: 'var(--calc-red)' }} /></button>
         </div>
       </header>
+
+      {showSettingsModal && (
+        <div className="settings-shell">
+          <button className="settings-backdrop" aria-label="Tutup pengaturan" onClick={() => setShowSettingsModal(false)} />
+          <aside className="settings-sidebar">
+            <div className="settings-sidebar-header">
+              <div>
+                <div className="settings-eyebrow">Menu</div>
+                <h2>Pengaturan Permainan</h2>
+              </div>
+              <button className="settings-close-btn" onClick={() => setShowSettingsModal(false)} aria-label="Tutup pengaturan">x</button>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">
+                <Settings style={{ width: 16, height: 16 }} />
+                <span>Nominal Saldo</span>
+              </div>
+              <label className="settings-field">
+                <span>Kemenangan</span>
+                <input type="number" inputMode="numeric" value={settings.winner} onChange={(e) => updateSetting("winner", e.target.value)} />
+              </label>
+              <label className="settings-field">
+                <span>Kalah 1</span>
+                <input type="number" inputMode="numeric" value={settings.loser1} onChange={(e) => updateSetting("loser1", e.target.value)} />
+              </label>
+              <label className="settings-field">
+                <span>Kalah 2</span>
+                <input type="number" inputMode="numeric" value={settings.loser2} onChange={(e) => updateSetting("loser2", e.target.value)} />
+              </label>
+              <label className="settings-field">
+                <span>Kalah 3</span>
+                <input type="number" inputMode="numeric" value={settings.loser3} onChange={(e) => updateSetting("loser3", e.target.value)} />
+              </label>
+              <button className="settings-secondary-btn" onClick={() => setSettings(DEFAULT_SETTINGS)}>Reset Nominal Default</button>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">
+                <ClipboardList style={{ width: 16, height: 16 }} />
+                <span>Rekap Kemenangan</span>
+              </div>
+              <div className="recap-toggle">
+                <button className={recapMode === "off" ? "active" : ""} onClick={() => setRecapMode("off")}>Mati</button>
+                <button className={recapMode === "every5" ? "active" : ""} onClick={() => setRecapMode("every5")}>Per 5 Ronde</button>
+              </div>
+              <button className="settings-primary-btn" onClick={() => setShowRecapModal(true)} disabled={matchHistory.length === 0}>
+                Lihat Rekap
+              </button>
+              <p className="settings-help">Rekap otomatis muncul setiap game ke-5, 10, 15, dan seterusnya saat mode per 5 ronde aktif.</p>
+            </div>
+          </aside>
+        </div>
+      )}
 
       {/* Scrollable Content Area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', minHeight: 0 }}>
@@ -722,6 +901,59 @@ function Index() {
                 iyo
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showRecapModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm modal-overlay" onClick={() => setShowRecapModal(false)} />
+          <div className="recap-modal modal-content">
+            <div className="recap-modal-header">
+              <div>
+                <div className="settings-eyebrow">Rekap Kemenangan</div>
+                <h2>{recapEntries.length > 0 ? `${recapEntries.length} ronde terakhir` : "Belum ada rekap"}</h2>
+              </div>
+              <button className="settings-close-btn" onClick={() => setShowRecapModal(false)} aria-label="Tutup rekap">x</button>
+            </div>
+
+            {recapEntries.length > 0 ? (
+              <>
+                <div className="recap-summary-grid">
+                  {recapStats.map((stat, i) => (
+                    <div key={stat.player.id} className="recap-player-card" style={{ '--recap-color': COLORS[i] } as React.CSSProperties}>
+                      <div className="recap-player-name">{stat.player.name}</div>
+                      <div className="recap-player-balance" data-positive={stat.balance >= 0}>
+                        {formatCompactRupiah(stat.balance)}
+                      </div>
+                      <div className="recap-player-meta">
+                        <span>Menang {stat.wins}</span>
+                        <span>Kalah {stat.losses}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="recap-history-list">
+                  {recapEntries.map((entry) => (
+                    <div key={entry.id} className="recap-round">
+                      <div className="recap-round-title">Ronde {entry.round}</div>
+                      <div className="recap-round-results">
+                        {entry.results.map((result) => (
+                          <div key={`${entry.id}-${result.playerId}`} className="recap-result-row">
+                            <span>{result.name}</span>
+                            <span>{getResultLabel(result.tier, entry.results.length)}</span>
+                            <strong data-positive={result.amount >= 0}>{formatCompactRupiah(result.amount)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="recap-empty">Rekap akan terisi setelah game selesai dan skor di-reset.</p>
+            )}
           </div>
         </div>
       )}

@@ -598,6 +598,297 @@
   margin-left: -6px;
 }
 
+/* ===== Settings Sidebar ===== */
+.settings-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+}
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.settings-sidebar {
+  position: relative;
+  width: min(86vw, 340px);
+  height: 100%;
+  padding: 18px 16px 22px;
+  background: linear-gradient(180deg, #101827, #070c17);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 18px 0 40px rgba(0, 0, 0, 0.42);
+  animation: sidebar-slide-in 0.22s ease-out both;
+  overflow-y: auto;
+}
+
+.settings-sidebar-header,
+.recap-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.settings-eyebrow {
+  color: rgba(232, 236, 244, 0.45);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.settings-sidebar h2,
+.recap-modal h2 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.settings-close-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 236, 244, 0.76);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.settings-section {
+  padding: 14px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: rgba(232, 236, 244, 0.9);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.settings-field {
+  display: grid;
+  grid-template-columns: 1fr 118px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: rgba(232, 236, 244, 0.62);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-field input {
+  width: 100%;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(6, 12, 24, 0.9);
+  color: var(--foreground);
+  text-align: right;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  outline: none;
+}
+
+.settings-primary-btn,
+.settings-secondary-btn {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.settings-primary-btn {
+  border: 1px solid rgba(74, 158, 255, 0.28);
+  background: rgba(74, 158, 255, 0.14);
+  color: #9dc9ff;
+}
+
+.settings-primary-btn:disabled {
+  opacity: 0.38;
+}
+
+.settings-secondary-btn {
+  margin-top: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 236, 244, 0.72);
+}
+
+.recap-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: rgba(6, 12, 24, 0.78);
+}
+
+.recap-toggle button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(232, 236, 244, 0.52);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.recap-toggle button.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--foreground);
+}
+
+.settings-help {
+  margin: 10px 0 0;
+  color: rgba(232, 236, 244, 0.42);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+@keyframes sidebar-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ===== Recap Modal ===== */
+.recap-modal {
+  width: min(92vw, 420px);
+  max-height: 82dvh;
+  overflow-y: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #101827, #070c17);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.recap-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.recap-player-card {
+  padding: 10px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--recap-color) 8%, rgba(255, 255, 255, 0.035));
+  border: 1px solid color-mix(in srgb, var(--recap-color) 26%, rgba(255, 255, 255, 0.06));
+}
+
+.recap-player-name {
+  color: var(--recap-color);
+  font-size: 12px;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recap-player-balance {
+  margin-top: 5px;
+  color: #e45353;
+  font-size: 18px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-player-balance[data-positive="true"] {
+  color: #36c76d;
+}
+
+.recap-player-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 5px;
+  color: rgba(232, 236, 244, 0.48);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.recap-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.recap-round {
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.recap-round-title {
+  margin-bottom: 8px;
+  color: rgba(232, 236, 244, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.recap-round-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.recap-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px 58px;
+  align-items: center;
+  gap: 8px;
+  color: rgba(232, 236, 244, 0.62);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.recap-result-row span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recap-result-row strong {
+  color: #e45353;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.recap-result-row strong[data-positive="true"] {
+  color: #36c76d;
+}
+
+.recap-empty {
+  margin: 0;
+  padding: 22px 8px;
+  color: rgba(232, 236, 244, 0.48);
+  text-align: center;
+  font-size: 13px;
+}
+
 /* ===== Animasi Skor Masuk ===== */
 @keyframes score-slide-in {
   0% {
