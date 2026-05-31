@@ -180,6 +180,37 @@
   margin-bottom: 12px;
 }
 
+.running-round-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 159, 67, 0.28);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(255, 159, 67, 0.16), rgba(74, 158, 255, 0.1)),
+    rgba(13, 19, 33, 0.94);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+}
+
+.running-round-label {
+  color: #FFCA28;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.running-round-meta {
+  margin-top: 6px;
+  color: rgba(232, 236, 244, 0.58);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* ===== Player Summary Card ===== */
 .player-card {
   background:
@@ -355,12 +386,6 @@
   letter-spacing: -0.02em;
 }
 
-.history-header .history-subtitle {
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.35);
-}
-
 .history-table {
   width: 100%;
   border-collapse: separate;
@@ -408,6 +433,8 @@
   transition: background 0.15s ease;
   border-radius: 6px;
   position: relative;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 .history-table .score-cell:active {
@@ -531,6 +558,16 @@
   letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.score-gesture-target {
+  cursor: pointer;
+  display: inline-block;
+  min-width: 44px;
+  padding: 4px 0;
+  text-align: center;
+  touch-action: pan-y;
+  user-select: none;
 }
 
 /* ===== R Badge ===== */

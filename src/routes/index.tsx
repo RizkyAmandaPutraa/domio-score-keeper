@@ -45,15 +45,25 @@ interface MatchEntry {
   results: MatchResult[];
 }
 
+interface VictoryHistoryEntry {
+  playerId: string;
+  name: string;
+  wins: number;
+  balance: number;
+}
+
 interface StoredState {
   players: Player[];
   settings: GameSettings;
   matchHistory: MatchEntry[];
   recapMode: "off" | "every5";
+  lastActivityAt?: string;
+  sessionVictoryHistory?: VictoryHistoryEntry[];
 }
 
 const STORAGE_KEY = "domino-score-state-v3";
 const LEGACY_STORAGE_KEY = "domino-score-state-v2";
+const IDLE_SESSION_TIMEOUT_MS = 3 * 60 * 60 * 1000;
 const DEFAULT_SETTINGS: GameSettings = {
   winner: 15000,
   loser1: 6000,
@@ -71,6 +81,17 @@ const COLORS = [
 
 function makePlayer(i: number): Player {
   return { id: crypto.randomUUID(), name: `Player ${i + 1}`, scores: [], wins: 0, balance: 0 };
+}
+
+function resetPlayerForNewSession(player: Player): Player {
+  return { ...player, scores: [], wins: 0, balance: 0 };
+}
+
+function isSessionExpired(lastActivityAt: string | undefined, now = Date.now()): boolean {
+  if (!lastActivityAt) return false;
+  const lastActivityTime = new Date(lastActivityAt).getTime();
+  if (!Number.isFinite(lastActivityTime)) return false;
+  return now - lastActivityTime >= IDLE_SESSION_TIMEOUT_MS;
 }
 
 function formatRupiah(amount: number): string {
@@ -141,6 +162,30 @@ function buildMatchEntry(players: Player[], tiers: Map<string, { tier: number; a
   };
 }
 
+function mergeSessionVictoryHistory(history: VictoryHistoryEntry[], players: Player[]): VictoryHistoryEntry[] {
+  const totals = new Map<string, VictoryHistoryEntry>();
+
+  history.forEach((entry) => {
+    const wins = typeof entry.wins === "number" && !isNaN(entry.wins) ? entry.wins : 0;
+    const balance = typeof entry.balance === "number" && !isNaN(entry.balance) ? entry.balance : 0;
+    totals.set(entry.playerId, { ...entry, wins, balance });
+  });
+
+  players.forEach((player) => {
+    const wins = typeof player.wins === "number" && !isNaN(player.wins) ? player.wins : 0;
+    const balance = typeof player.balance === "number" && !isNaN(player.balance) ? player.balance : 0;
+    const existing = totals.get(player.id);
+    totals.set(player.id, {
+      playerId: player.id,
+      name: player.name,
+      wins: (existing?.wins ?? 0) + wins,
+      balance: (existing?.balance ?? 0) + balance,
+    });
+  });
+
+  return Array.from(totals.values()).filter((entry) => entry.wins !== 0 || entry.balance !== 0);
+}
+
 function getResultLabel(tier: number, playerCount: number): string {
   if (tier === 1) return "Menang";
   const lossLevel = playerCount - tier + 1;
@@ -194,18 +239,26 @@ function Index() {
   const [showResetAllModal, setShowResetAllModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showRecapModal, setShowRecapModal] = useState(false);
+  const [showVictoryHistoryModal, setShowVictoryHistoryModal] = useState(false);
   const [currentBatch, setCurrentBatch] = useState<string[]>([]);
   const [showTieModal, setShowTieModal] = useState(false);
   const [tieOrder, setTieOrder] = useState<string[]>([]);
   const [selectedTiePlayerId, setSelectedTiePlayerId] = useState<string | null>(null);
   const [settings, setSettings] = useState<GameSettings>(DEFAULT_SETTINGS);
   const [matchHistory, setMatchHistory] = useState<MatchEntry[]>([]);
+  const [sessionVictoryHistory, setSessionVictoryHistory] = useState<VictoryHistoryEntry[]>([]);
   const [recapMode, setRecapMode] = useState<"off" | "every5">("off");
+  const [lastActivityAt, setLastActivityAt] = useState(() => new Date().toISOString());
   const [lastAutoRecapRound, setLastAutoRecapRound] = useState(0);
   const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [hasDismissedTie, setHasDismissedTie] = useState(false);
 
+  const markActivity = () => setLastActivityAt(new Date().toISOString());
+
   useEffect(() => {
+    const now = Date.now();
+    const nowIso = new Date(now).toISOString();
+
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -220,7 +273,9 @@ function Index() {
           setPlayers(normalized);
           setSettings(DEFAULT_SETTINGS);
           setMatchHistory([]);
+          setSessionVictoryHistory([]);
           setRecapMode("off");
+          setLastActivityAt(nowIso);
           setLoaded(true);
           return;
         }
@@ -230,10 +285,13 @@ function Index() {
             wins: typeof p.wins === "number" && !isNaN(p.wins) ? p.wins : 0,
             balance: typeof p.balance === "number" && !isNaN(p.balance) ? p.balance : 0,
           }));
-          setPlayers(normalized);
+          const expired = isSessionExpired(parsed.lastActivityAt, now);
+          setPlayers(expired ? normalized.map(resetPlayerForNewSession) : normalized);
           setSettings(normalizeSettings(parsed.settings));
-          setMatchHistory(Array.isArray(parsed.matchHistory) ? parsed.matchHistory : []);
-          setRecapMode(parsed.recapMode === "every5" ? "every5" : "off");
+          setMatchHistory(expired ? [] : Array.isArray(parsed.matchHistory) ? parsed.matchHistory : []);
+          setSessionVictoryHistory(expired ? [] : Array.isArray(parsed.sessionVictoryHistory) ? parsed.sessionVictoryHistory : []);
+          setRecapMode(expired ? "off" : parsed.recapMode === "every5" ? "every5" : "off");
+          setLastActivityAt(expired ? nowIso : parsed.lastActivityAt ?? nowIso);
           setLoaded(true);
           return;
         }
@@ -253,19 +311,52 @@ function Index() {
           setPlayers(migrated);
           setSettings(DEFAULT_SETTINGS);
           setMatchHistory([]);
+          setSessionVictoryHistory([]);
           setRecapMode("off");
+          setLastActivityAt(nowIso);
           setLoaded(true);
           return;
         }
       }
     } catch { }
     setPlayers([makePlayer(0), makePlayer(1)]);
+    setLastActivityAt(nowIso);
     setLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify({ players, settings: normalizeSettings(settings), matchHistory, recapMode }));
-  }, [players, settings, matchHistory, recapMode, loaded]);
+    if (loaded) localStorage.setItem(STORAGE_KEY, JSON.stringify({ players, settings: normalizeSettings(settings), matchHistory, sessionVictoryHistory, recapMode, lastActivityAt }));
+  }, [players, settings, matchHistory, sessionVictoryHistory, recapMode, lastActivityAt, loaded]);
+
+  useEffect(() => {
+    if (!loaded) return;
+
+    const resetIdleSession = () => {
+      if (!isSessionExpired(lastActivityAt)) return;
+
+      if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
+      setPlayers((prev) => prev.map(resetPlayerForNewSession));
+      setMatchHistory([]);
+      setSessionVictoryHistory([]);
+      setRecapMode("off");
+      setCurrentBatch([]);
+      setTieOrder([]);
+      setSelectedTiePlayerId(null);
+      setHasDismissedTie(false);
+      setShowRecapModal(false);
+      setShowVictoryHistoryModal(false);
+      setShowTieModal(false);
+      setShowResetModal(false);
+      setShowResetAllModal(false);
+      setCalcFor(null);
+      setEditingScore(null);
+      setLastActivityAt(new Date().toISOString());
+    };
+
+    resetIdleSession();
+    const intervalId = window.setInterval(resetIdleSession, 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [loaded, lastActivityAt]);
 
   useEffect(() => {
     if (recapMode !== "every5") return;
@@ -417,20 +508,26 @@ function Index() {
 
   const addScore = (id: string, value: number) => {
     if (!value) return;
+    markActivity();
     setPlayers((prev) => prev.map((p) => (p.id === id ? { ...p, scores: [...p.scores, value] } : p)));
   };
 
-  const handleDeleteLast = (playerId: string) => {
+  const handleDeleteScore = (playerId: string, scoreIndex: number) => {
+    const isDeletingLastScore = players.some((p) => p.id === playerId && scoreIndex === p.scores.length - 1);
+    markActivity();
+
     setPlayers((prev) =>
       prev.map((p) => {
-        if (p.id === playerId && p.scores.length > 0) {
+        if (p.id === playerId && scoreIndex >= 0 && scoreIndex < p.scores.length) {
           const newScores = [...p.scores];
-          newScores.pop();
+          newScores.splice(scoreIndex, 1);
           return { ...p, scores: newScores };
         }
         return p;
       })
     );
+
+    if (!isDeletingLastScore) return;
 
     setCurrentBatch((prev) => {
       const newBatch = prev.filter((id) => id !== playerId);
@@ -453,12 +550,112 @@ function Index() {
     });
   };
 
+  const createScoreGestureHandlers = (playerId: string, scoreIndex: number, score: number) => {
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let startX = 0;
+    let currentX = 0;
+    let isPointerDown = false;
+    let isSwiping = false;
+
+    const clearLongPress = () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    const resetElement = (element: HTMLElement) => {
+      element.style.transition = "transform 0.18s ease, opacity 0.18s ease";
+      element.style.transform = "translateX(0)";
+      element.style.opacity = "1";
+    };
+
+    const onPointerDown = (event: React.PointerEvent<HTMLElement>) => {
+      if ("button" in event && event.button !== 0) return;
+      startX = event.clientX;
+      currentX = startX;
+      isPointerDown = true;
+      isSwiping = false;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      resetElement(event.currentTarget);
+      clearLongPress();
+      longPressTimer = setTimeout(() => {
+        if (!isSwiping) setEditingScore({ playerId, index: scoreIndex, score });
+      }, 500);
+    };
+
+    const onPointerMove = (event: React.PointerEvent<HTMLElement>) => {
+      if (!isPointerDown) return;
+      currentX = event.clientX;
+      const distance = startX - currentX;
+      if (distance <= 8) return;
+
+      isSwiping = true;
+      clearLongPress();
+      const swipeDistance = Math.min(distance, 88);
+      const element = event.currentTarget;
+      element.style.transition = "none";
+      element.style.transform = `translateX(-${swipeDistance}px)`;
+      element.style.opacity = `${1 - swipeDistance / 110}`;
+      event.preventDefault();
+    };
+
+    const onPointerUp = (event: React.PointerEvent<HTMLElement>) => {
+      clearLongPress();
+      if (!isPointerDown) return;
+
+      const distance = startX - currentX;
+      const element = event.currentTarget;
+      isPointerDown = false;
+      if (element.hasPointerCapture(event.pointerId)) {
+        element.releasePointerCapture(event.pointerId);
+      }
+
+      if (isSwiping && distance > 56) {
+        element.style.transition = "transform 0.16s ease, opacity 0.16s ease";
+        element.style.transform = "translateX(-100%)";
+        element.style.opacity = "0";
+        window.setTimeout(() => {
+          resetElement(element);
+          handleDeleteScore(playerId, scoreIndex);
+        }, 120);
+      } else {
+        resetElement(element);
+      }
+
+      isSwiping = false;
+    };
+
+    const onPointerCancel = (event: React.PointerEvent<HTMLElement>) => {
+      clearLongPress();
+      isPointerDown = false;
+      isSwiping = false;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      resetElement(event.currentTarget);
+    };
+
+    return {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
+        event.preventDefault();
+        setEditingScore({ playerId, index: scoreIndex, score });
+      },
+    };
+  };
+
   const renamePlayer = (id: string, name: string) => {
+    markActivity();
     setPlayers((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
   };
 
   const updateSetting = (key: keyof GameSettings, value: string) => {
     const parsed = Math.max(0, Number(value.replace(/\D/g, "")) || 0);
+    markActivity();
     setSettings((prev) => ({ ...prev, [key]: parsed }));
   };
 
@@ -474,6 +671,7 @@ function Index() {
   };
 
   const doReset = () => {
+    markActivity();
     setCurrentBatch([]);
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
     setHasDismissedTie(false);
@@ -512,6 +710,7 @@ function Index() {
   };
 
   const doResetAll = () => {
+    markActivity();
     setCurrentBatch([]);
     if (batchTimeoutRef.current) clearTimeout(batchTimeoutRef.current);
     setHasDismissedTie(false);
@@ -524,18 +723,22 @@ function Index() {
         balance: 0,
       }))
     );
+    setSessionVictoryHistory((prev) => mergeSessionVictoryHistory(prev, players));
     setMatchHistory([]);
+    setRecapMode("off");
     setShowRecapModal(false);
     setShowResetAllModal(false);
   };
 
   const addPlayer = () => {
     if (players.length >= 4) return;
+    markActivity();
     setPlayers((prev) => [...prev, makePlayer(prev.length)]);
   };
 
   const removePlayer = () => {
     if (players.length <= 1) return;
+    markActivity();
     setPlayers((prev) => prev.slice(0, -1));
   };
 
@@ -548,8 +751,9 @@ function Index() {
 
   const recapEntries = matchHistory.slice(-5);
   const recapProgress = matchHistory.length % 5;
-  const recapProgressDisplay = recapMode === "every5" && matchHistory.length > 0 && recapProgress === 0 ? 5 : recapProgress;
-  const historySubtitle = recapMode === "every5" ? `${recapProgressDisplay}/5 Ronde` : "Total Poin";
+  const runningRoundInCycle = recapMode === "every5" ? recapProgress + 1 : matchHistory.length + 1;
+  const lastWinnerName = matchHistory.at(-1)?.results.find((result) => result.tier === 1)?.name;
+  const victoryHistoryEntries = mergeSessionVictoryHistory(sessionVictoryHistory, players);
   const recapStats = players.map((p) => {
     const results = recapEntries
       .map((entry) => entry.results.find((result) => result.playerId === p.id || result.name === p.name))
@@ -644,12 +848,29 @@ function Index() {
 
             <div className="settings-section">
               <div className="settings-section-title">
+                <Trophy style={{ width: 16, height: 16 }} />
+                <span>Riwayat Kemenangan</span>
+              </div>
+              <button
+                className="settings-primary-btn"
+                onClick={() => {
+                  setShowSettingsModal(false);
+                  setShowVictoryHistoryModal(true);
+                }}
+              >
+                Buka Riwayat Kemenangan
+              </button>
+              <p className="settings-help">Menampilkan rekap kemenangan dan saldo dari ronde yang sudah selesai di permainan aktif.</p>
+            </div>
+
+            <div className="settings-section">
+              <div className="settings-section-title">
                 <ClipboardList style={{ width: 16, height: 16 }} />
                 <span>Rekap Kemenangan</span>
               </div>
               <div className="recap-toggle">
-                <button className={recapMode === "off" ? "active" : ""} onClick={() => setRecapMode("off")}>Mati</button>
-                <button className={recapMode === "every5" ? "active" : ""} onClick={() => setRecapMode("every5")}>Per 5 Ronde</button>
+                <button className={recapMode === "off" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("off"); }}>Mati</button>
+                <button className={recapMode === "every5" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("every5"); }}>Per 5 Ronde</button>
               </div>
               <button className="settings-primary-btn" onClick={() => setShowRecapModal(true)} disabled={matchHistory.length === 0}>
                 Lihat Rekap
@@ -662,6 +883,17 @@ function Index() {
 
       {/* Scrollable Content Area */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 0', minHeight: 0 }}>
+        {recapMode === "every5" && (
+          <div className="running-round-banner">
+            <div>
+              <div className="running-round-label">Round {runningRoundInCycle}</div>
+              <div className="running-round-meta">
+                {lastWinnerName ? `Terakhir menang: ${lastWinnerName}` : "Belum ada pemenang"}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Player Summary Cards */}
         <div className="player-summary-grid" style={{ gridTemplateColumns: `repeat(${players.length}, minmax(0, 1fr))` }}>
           {players.map((p, i) => {
@@ -707,7 +939,6 @@ function Index() {
         <div className="history-container">
           <div className="history-header">
             <span className="history-title">Riwayat Permainan</span>
-            <span className="history-subtitle">{historySubtitle}</span>
           </div>
           {maxRounds > 0 && (
             <div className="history-scroll" style={{ maxHeight: 'calc(100dvh - 420px)' }}>
@@ -727,28 +958,9 @@ function Index() {
                         {players.map((p, pi) => {
                           if (ri >= p.scores.length) return <td key={p.id}></td>;
                           const s = p.scores[ri];
-                          const isPlayerLast = ri === p.scores.length - 1;
                           const showR = p.id === lastBlokWinnerId && ri === lastBlokRowIndex;
-                          let touchTimer: ReturnType<typeof setTimeout>;
-                          let startX = 0, currentX = 0, isSwiping = false;
-                          const onStart = (e: React.TouchEvent | React.MouseEvent) => {
-                            if ('touches' in e) startX = e.touches[0].clientX;
-                            isSwiping = false;
-                            touchTimer = setTimeout(() => { if (!isSwiping) setEditingScore({ playerId: p.id, index: ri, score: s }); }, 500);
-                          };
-                          const onMove = (e: React.TouchEvent) => {
-                            if (!isPlayerLast) return;
-                            currentX = e.touches[0].clientX;
-                            const d = startX - currentX;
-                            if (d > 10) { isSwiping = true; clearTimeout(touchTimer); const el = e.currentTarget as HTMLElement; el.style.transition = 'none'; el.style.transform = `translateX(-${Math.min(d, 80)}px)`; el.style.opacity = `${1 - Math.min(d, 80) / 80}`; }
-                          };
-                          const onEnd = (e: React.TouchEvent | React.MouseEvent) => {
-                            clearTimeout(touchTimer);
-                            if (isPlayerLast && isSwiping) { const d = startX - currentX; const el = e.currentTarget as HTMLElement; el.style.transition = 'all 0.2s'; if (d > 50) { handleDeleteLast(p.id); } else { el.style.transform = 'translateX(0)'; el.style.opacity = '1'; } }
-                            isSwiping = false;
-                          };
                           return (
-                            <td key={p.id} className="score-cell" onTouchStart={onStart} onTouchMove={onMove} onTouchEnd={onEnd} onMouseDown={onStart} onMouseUp={onEnd} onMouseLeave={onEnd} onContextMenu={e => { e.preventDefault(); onStart(e); }}>
+                            <td key={p.id} className="score-cell" {...createScoreGestureHandlers(p.id, ri, s)}>
                               <span style={{ color: COLORS[pi] }}>{s === 0 ? <span className="score-dash">-</span> : s}</span>
                               {showR && <span className="r-badge">R</span>}
                             </td>
@@ -776,6 +988,9 @@ function Index() {
           const isDanger = t >= 40 && t < 51;
           const someoneAbove30 = totals.some(tt => tt >= 30);
           const isSTC = t <= 10 && t > 0 && someoneAbove30;
+          const lastScoreIndex = p.scores.length - 1;
+          const lastScore = p.scores[lastScoreIndex];
+          const totalGestureHandlers = lastScoreIndex >= 0 ? createScoreGestureHandlers(p.id, lastScoreIndex, lastScore) : {};
           return (
             <div key={p.id} className="action-item">
               <button className="fab-btn" onClick={() => setCalcFor(p.id)} style={{ backgroundColor: color }} aria-label={`Tambah skor ${p.name}`}>
@@ -797,7 +1012,13 @@ function Index() {
                   <Pencil style={{ width: 10, height: 10, opacity: 0.45 }} />
                 </button>
               )}
-              <span className={`action-total ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`} style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}>{t}</span>
+              <span
+                className={`action-total score-gesture-target ${isDanger ? 'danger-pulse' : ''} ${isSTC ? 'super-glow' : ''}`}
+                style={{ color: t >= 40 ? 'var(--calc-red)' : isSTC ? '#FFD700' : color }}
+                {...totalGestureHandlers}
+              >
+                {t}
+              </span>
             </div>
           );
         })}
@@ -898,6 +1119,7 @@ function Index() {
               <button
                 onClick={() => {
                   if (selectedTiePlayerId) {
+                    markActivity();
                     // Tambahkan player yang dipilih ke tieOrder
                     setTieOrder((prev) => [...prev, selectedTiePlayerId]);
                     setSelectedTiePlayerId(null);
@@ -938,6 +1160,43 @@ function Index() {
                 iyo
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showVictoryHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm modal-overlay" onClick={() => setShowVictoryHistoryModal(false)} />
+          <div className="recap-modal modal-content">
+            <div className="recap-modal-header">
+              <div>
+                <div className="settings-eyebrow">Riwayat Kemenangan</div>
+                <h2>{victoryHistoryEntries.length > 0 ? "Saldo sesi ini" : "Belum ada kemenangan"}</h2>
+              </div>
+              <button className="settings-close-btn" onClick={() => setShowVictoryHistoryModal(false)} aria-label="Tutup riwayat kemenangan">x</button>
+            </div>
+
+            {victoryHistoryEntries.length > 0 ? (
+              <div className="recap-summary-grid">
+                {victoryHistoryEntries.map((entry, i) => {
+                  const playerIndex = players.findIndex((p) => p.id === entry.playerId);
+                  const color = COLORS[playerIndex >= 0 ? playerIndex : i % COLORS.length];
+                  return (
+                    <div key={entry.playerId} className="recap-player-card" style={{ '--recap-color': color } as React.CSSProperties}>
+                      <div className="recap-player-name">{entry.name}</div>
+                      <div className="recap-player-balance" data-positive={entry.balance >= 0}>
+                        {formatCompactRupiah(entry.balance)}
+                      </div>
+                      <div className="recap-player-meta">
+                        <span>Menang {entry.wins}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="recap-empty">Riwayat akan terisi setelah ada game selesai. Data ini tetap tersimpan saat reset semua.</p>
+            )}
           </div>
         </div>
       )}
@@ -1054,6 +1313,7 @@ function Index() {
         onDone={(val) => {
           if (editingScore) {
             if (!isNaN(val) && val >= 0) {
+              markActivity();
               setPlayers(prev => prev.map(p => {
                 if (p.id === editingScore.playerId) {
                   const newScores = [...p.scores];
