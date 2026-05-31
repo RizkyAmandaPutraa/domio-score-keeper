@@ -725,7 +725,6 @@ function Index() {
     );
     setSessionVictoryHistory((prev) => mergeSessionVictoryHistory(prev, players));
     setMatchHistory([]);
-    setRecapMode("off");
     setShowRecapModal(false);
     setShowResetAllModal(false);
   };
