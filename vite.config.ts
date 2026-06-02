@@ -15,8 +15,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["icons/icon-512x512.png", "icons/icon-192x192.png", "icons/apple-touch-icon.png"],
       manifest: {
-        name: "Domino Score Keeper",
-        short_name: "DominoScore",
+        name: "copyright rap 2026",
+        short_name: "Domino Score",
         description: "Hitung skor domino dengan mudah, hingga 4 pemain. Data tersimpan otomatis.",
         theme_color: "#0A0E1A",
         background_color: "#0A0E1A",
