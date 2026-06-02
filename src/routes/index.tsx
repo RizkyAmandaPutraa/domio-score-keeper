@@ -247,7 +247,11 @@ function useInstallGuide() {
     setVisible(false);
   };
 
-  return { visible, dismiss, isIOS, isAndroid, isStandalone, shouldShow };
+  const open = () => {
+    setVisible(true);
+  };
+
+  return { visible, dismiss, open, isIOS, isAndroid, isStandalone, shouldShow };
 }
 
 function InstallGuideBanner({ onDismiss, isIOS, isAndroid }: { onDismiss: () => void; isIOS: boolean; isAndroid: boolean }) {
@@ -383,12 +387,14 @@ function usePWAInstall() {
   }, []);
 
   const install = async () => {
-    if (!prompt) return;
-    const result = await prompt.prompt();
+    if (!prompt) return false;
+    await prompt.prompt();
+    const result = await prompt.userChoice;
     if (result.outcome === "accepted") {
       setInstalled(true);
       setPrompt(null);
     }
+    return result.outcome === "accepted";
   };
 
   return { canInstall: !!prompt && !installed, installed, install };
@@ -396,12 +402,13 @@ function usePWAInstall() {
 
 // Extend Window type for beforeinstallprompt
 interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<{ outcome: "accepted" | "dismissed" }>;
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
 
 function Index() {
   const { canInstall, installed, install } = usePWAInstall();
-  const { visible: showInstallGuide, dismiss: dismissInstallGuide, isIOS, isAndroid } = useInstallGuide();
+  const { visible: showInstallGuide, dismiss: dismissInstallGuide, open: openInstallGuide, isIOS, isAndroid } = useInstallGuide();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [calcFor, setCalcFor] = useState<string | null>(null);
@@ -426,6 +433,14 @@ function Index() {
   const [hasDismissedTie, setHasDismissedTie] = useState(false);
 
   const markActivity = () => setLastActivityAt(new Date().toISOString());
+  const handleInstallApp = async () => {
+    markActivity();
+    if (canInstall) {
+      await install();
+      return;
+    }
+    openInstallGuide();
+  };
 
   useEffect(() => {
     const now = Date.now();
@@ -1122,10 +1137,10 @@ function Index() {
                 <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
               </button>
               <div className="settings-section-body">
-                {!installed && canInstall && (
+                {!installed && (
                   <button
                     className="pwa-install-btn"
-                    onClick={install}
+                    onClick={handleInstallApp}
                     id="pwa-install-btn"
                   >
                     <Download style={{ width: 18, height: 18 }} />
@@ -1134,7 +1149,7 @@ function Index() {
                 )}
                 {!installed && !canInstall && (
                   <p className="settings-help" style={{ textAlign: 'center', opacity: 0.55, fontSize: 12 }}>
-                    Buka di Chrome/Edge lalu tambahkan ke homescreen untuk install.
+                    Jika prompt Chrome belum muncul, tombol ini akan membuka panduan install manual.
                   </p>
                 )}
                 {installed && (
