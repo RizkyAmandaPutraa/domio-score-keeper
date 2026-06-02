@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, ClipboardList, Menu, Plus, RotateCcw, Settings, Trophy, UserPlus, UserMinus, Pencil, Trash2, User } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ClipboardList, Download, Menu, Plus, RotateCcw, Settings, Share2, Trophy, Users, Pencil, Trash2, User, X } from "lucide-react";
 import { Calculator } from "@/components/Calculator";
 
 export const Route = createFileRoute("/")({
@@ -229,7 +229,179 @@ function computeTiers(players: Player[], settings: GameSettings, tieOrder: strin
   return result;
 }
 
+// ===== Install Guide Banner =====
+function useInstallGuide() {
+  const isStandalone = typeof window !== 'undefined' && window.matchMedia('(display-mode: standalone)').matches;
+  const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent) && !(window as unknown as Record<string, unknown>).MSStream;
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
+
+  // Show if not installed and not dismissed this session
+  const shouldShow = !isStandalone && (isIOS || isAndroid || true);
+  const [visible, setVisible] = useState(() => {
+    if (isStandalone) return false;
+    return !sessionStorage.getItem('install-guide-dismissed');
+  });
+
+  const dismiss = () => {
+    sessionStorage.setItem('install-guide-dismissed', '1');
+    setVisible(false);
+  };
+
+  return { visible, dismiss, isIOS, isAndroid, isStandalone, shouldShow };
+}
+
+function InstallGuideBanner({ onDismiss, isIOS, isAndroid }: { onDismiss: () => void; isIOS: boolean; isAndroid: boolean }) {
+  const defaultTab = isIOS ? 'ios' : 'android';
+  const [tab, setTab] = useState<'ios' | 'android'>(defaultTab);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="install-guide-backdrop" onClick={onDismiss} />
+      {/* Sheet */}
+      <div className="install-guide-sheet" role="dialog" aria-label="Petunjuk Install Aplikasi">
+        {/* Handle */}
+        <div className="install-guide-handle" />
+
+        {/* Header */}
+        <div className="install-guide-header">
+          <div>
+            <div className="install-guide-eyebrow">📲 Gratis &amp; Offline</div>
+            <h2 className="install-guide-title">Install Aplikasi</h2>
+          </div>
+          <button className="install-guide-close" onClick={onDismiss} aria-label="Tutup">
+            <X style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
+
+        {/* Tab Toggle */}
+        <div className="install-guide-tabs">
+          <button
+            className={`install-guide-tab ${tab === 'ios' ? 'active' : ''}`}
+            onClick={() => setTab('ios')}
+          >
+             iOS (Safari)
+          </button>
+          <button
+            className={`install-guide-tab ${tab === 'android' ? 'active' : ''}`}
+            onClick={() => setTab('android')}
+          >
+             Android (Chrome)
+          </button>
+        </div>
+
+        {/* Steps */}
+        {tab === 'ios' && (
+          <div className="install-guide-steps">
+            <div className="install-guide-step">
+              <div className="step-num">1</div>
+              <div className="step-content">
+                <div className="step-title">Buka di Safari</div>
+                <div className="step-desc">Pastikan kamu membuka link ini di browser <strong>Safari</strong> (bukan Chrome/Firefox)</div>
+              </div>
+            </div>
+            <div className="install-guide-step">
+              <div className="step-num">2</div>
+              <div className="step-content">
+                <div className="step-title">Tap tombol Bagikan</div>
+                <div className="step-desc">Tap ikon <Share2 style={{ width: 14, height: 14, display: 'inline', verticalAlign: 'middle' }} /> <strong>Bagikan</strong> di bagian bawah Safari</div>
+              </div>
+            </div>
+            <div className="install-guide-step">
+              <div className="step-num">3</div>
+              <div className="step-content">
+                <div className="step-title">Tambahkan ke Layar Utama</div>
+                <div className="step-desc">Scroll ke bawah, tap <strong>"Tambahkan ke Layar Utama"</strong> lalu tap <strong>Tambahkan</strong></div>
+              </div>
+            </div>
+            <div className="install-guide-tip">
+              💡 App akan tampil seperti aplikasi native di homescreen kamu!
+            </div>
+          </div>
+        )}
+
+        {tab === 'android' && (
+          <div className="install-guide-steps">
+            <div className="install-guide-step">
+              <div className="step-num">1</div>
+              <div className="step-content">
+                <div className="step-title">Buka di Chrome atau Edge</div>
+                <div className="step-desc">Pastikan kamu membuka link ini di browser <strong>Chrome</strong> atau <strong>Edge</strong></div>
+              </div>
+            </div>
+            <div className="install-guide-step">
+              <div className="step-num">2</div>
+              <div className="step-content">
+                <div className="step-title">Buka Menu Sidebar</div>
+                <div className="step-desc">Tap ikon <Menu style={{ width: 14, height: 14, display: 'inline', verticalAlign: 'middle' }} /> <strong>Menu</strong> di pojok kiri atas aplikasi</div>
+              </div>
+            </div>
+            <div className="install-guide-step">
+              <div className="step-num">3</div>
+              <div className="step-content">
+                <div className="step-title">Tap "Download & Install App"</div>
+                <div className="step-desc">Scroll ke bawah sidebar, tap tombol <strong>"Download & Install App"</strong> berwarna hijau</div>
+              </div>
+            </div>
+            <div className="install-guide-tip">
+              💡 App bisa dipakai <strong>offline</strong> setelah terinstall!
+            </div>
+          </div>
+        )}
+
+        <button className="install-guide-dismiss-btn" onClick={onDismiss}>
+          Mengerti, Jangan Tampilkan Lagi
+        </button>
+      </div>
+    </>
+  );
+}
+
+function usePWAInstall() {
+  const [prompt, setPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+
+    const installedHandler = () => setInstalled(true);
+    window.addEventListener("appinstalled", installedHandler);
+
+    // Jika sudah berjalan sebagai standalone (sudah terinstall)
+    if (window.matchMedia("(display-mode: standalone)").matches) {
+      setInstalled(true);
+    }
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", installedHandler);
+    };
+  }, []);
+
+  const install = async () => {
+    if (!prompt) return;
+    const result = await prompt.prompt();
+    if (result.outcome === "accepted") {
+      setInstalled(true);
+      setPrompt(null);
+    }
+  };
+
+  return { canInstall: !!prompt && !installed, installed, install };
+}
+
+// Extend Window type for beforeinstallprompt
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
 function Index() {
+  const { canInstall, installed, install } = usePWAInstall();
+  const { visible: showInstallGuide, dismiss: dismissInstallGuide, isIOS, isAndroid } = useInstallGuide();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [calcFor, setCalcFor] = useState<string | null>(null);
@@ -729,16 +901,17 @@ function Index() {
     setShowResetAllModal(false);
   };
 
-  const addPlayer = () => {
-    if (players.length >= 4) return;
+  const setPlayerCount = (count: number) => {
+    if (count < 2 || count > 4) return;
     markActivity();
-    setPlayers((prev) => [...prev, makePlayer(prev.length)]);
-  };
-
-  const removePlayer = () => {
-    if (players.length <= 1) return;
-    markActivity();
-    setPlayers((prev) => prev.slice(0, -1));
+    setPlayers((prev) => {
+      if (count === prev.length) return prev;
+      if (count > prev.length) {
+        const added = Array.from({ length: count - prev.length }, (_, i) => makePlayer(prev.length + i));
+        return [...prev, ...added];
+      }
+      return prev.slice(0, count);
+    });
   };
 
   const maxRounds = Math.max(0, ...players.map(p => p.scores.length));
@@ -770,6 +943,15 @@ function Index() {
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden" style={{ background: '#0A0E1A', color: '#E8ECF4' }}>
+      {/* Install Guide Banner */}
+      {showInstallGuide && !installed && (
+        <InstallGuideBanner
+          onDismiss={dismissInstallGuide}
+          isIOS={isIOS}
+          isAndroid={isAndroid}
+        />
+      )}
+
       {/* Floating Tie-Breaker Confirmation Banner */}
       {gameFinished && hasDismissedTie && (!allSameRounds || unresolvedTie !== null) && (
         <button
@@ -793,8 +975,6 @@ function Index() {
           <h1>Domino Score</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <button onClick={removePlayer} disabled={players.length <= 1} className="header-btn" aria-label="Hapus pemain"><UserMinus style={{ width: 20, height: 20 }} /></button>
-          <button onClick={addPlayer} disabled={players.length >= 4} className="header-btn" aria-label="Tambah pemain"><UserPlus style={{ width: 20, height: 20 }} /></button>
           <button onClick={resetAll} className="header-btn" aria-label="Reset Semua"><Trash2 style={{ width: 20, height: 20, color: 'var(--calc-red)', opacity: 0.7 }} /></button>
           <button onClick={reset} className="header-btn" aria-label="Reset"><RotateCcw style={{ width: 20, height: 20, color: 'var(--calc-red)' }} /></button>
         </div>
@@ -812,69 +992,158 @@ function Index() {
               <button className="settings-close-btn" onClick={() => setShowSettingsModal(false)} aria-label="Tutup pengaturan">x</button>
             </div>
 
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Settings style={{ width: 16, height: 16 }} />
-                <span>Nominal Saldo</span>
+            {/* Jumlah Pemain */}
+            <div className="settings-section open">
+              <button className="settings-section-toggle" onClick={(e) => {
+                const section = e.currentTarget.closest('.settings-section')!;
+                section.classList.toggle('open');
+              }}>
+                <div className="settings-section-title">
+                  <Users style={{ width: 16, height: 16 }} />
+                  <span>Jumlah Pemain</span>
+                </div>
+                <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
+              </button>
+              <div className="settings-section-body">
+                <div className="player-count-selector">
+                  {[2, 3, 4].map((count) => (
+                    <button
+                      key={count}
+                      className={`player-count-option ${players.length === count ? 'active' : ''}`}
+                      onClick={() => setPlayerCount(count)}
+                    >
+                      <span className="player-count-num">{count}</span>
+                      <span className="player-count-label">Pemain</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <label className="settings-field">
-                <span>Kemenangan</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.winner)} onChange={(e) => updateSetting("winner", e.target.value)} />
-              </label>
-              <label className="settings-field">
-                <span>Kalah 1</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser1)} onChange={(e) => updateSetting("loser1", e.target.value)} />
-              </label>
-              <label className="settings-field">
-                <span>Kalah 2</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser2)} onChange={(e) => updateSetting("loser2", e.target.value)} />
-              </label>
-              <label className="settings-field">
-                <span>Kalah 3</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser3)} onChange={(e) => updateSetting("loser3", e.target.value)} />
-              </label>
-              <label className="settings-field">
-                <span>Alig</span>
-                <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.aligAmount)} onChange={(e) => updateSetting("aligAmount", e.target.value)} />
-              </label>
-              <label className="settings-field">
-                <span>Minimal Alig</span>
-                <input type="text" inputMode="numeric" value={gameSettings.aligThreshold} onChange={(e) => updateSetting("aligThreshold", e.target.value)} />
-              </label>
-              <p className="settings-help">Alig aktif jika total pemenang di bawah batas ini. Default: di bawah 11.</p>
-              <button className="settings-secondary-btn" onClick={() => setSettings(DEFAULT_SETTINGS)}>Reset Nominal Default</button>
             </div>
 
             <div className="settings-section">
-              <div className="settings-section-title">
-                <Trophy style={{ width: 16, height: 16 }} />
-                <span>Riwayat Kemenangan</span>
-              </div>
-              <button
-                className="settings-primary-btn"
-                onClick={() => {
-                  setShowSettingsModal(false);
-                  setShowVictoryHistoryModal(true);
-                }}
-              >
-                Buka Riwayat Kemenangan
+              <button className="settings-section-toggle" onClick={(e) => {
+                const section = e.currentTarget.closest('.settings-section')!;
+                section.classList.toggle('open');
+              }}>
+                <div className="settings-section-title">
+                  <Settings style={{ width: 16, height: 16 }} />
+                  <span>Nominal Saldo</span>
+                </div>
+                <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
               </button>
-              <p className="settings-help">Menampilkan rekap kemenangan dan saldo dari ronde yang sudah selesai di permainan aktif.</p>
+              <div className="settings-section-body">
+                <label className="settings-field">
+                  <span>Kemenangan</span>
+                  <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.winner)} onChange={(e) => updateSetting("winner", e.target.value)} />
+                </label>
+                <label className="settings-field">
+                  <span>Kalah 1</span>
+                  <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser1)} onChange={(e) => updateSetting("loser1", e.target.value)} />
+                </label>
+                <label className="settings-field">
+                  <span>Kalah 2</span>
+                  <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser2)} onChange={(e) => updateSetting("loser2", e.target.value)} />
+                </label>
+                <label className="settings-field">
+                  <span>Kalah 3</span>
+                  <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.loser3)} onChange={(e) => updateSetting("loser3", e.target.value)} />
+                </label>
+                <label className="settings-field">
+                  <span>Alig</span>
+                  <input type="text" inputMode="numeric" value={formatRupiahInput(gameSettings.aligAmount)} onChange={(e) => updateSetting("aligAmount", e.target.value)} />
+                </label>
+                <label className="settings-field">
+                  <span>Minimal Alig</span>
+                  <input type="text" inputMode="numeric" value={gameSettings.aligThreshold} onChange={(e) => updateSetting("aligThreshold", e.target.value)} />
+                </label>
+                <p className="settings-help">Alig aktif jika total pemenang di bawah batas ini. Default: di bawah 11.</p>
+                <button className="settings-secondary-btn" onClick={() => setSettings(DEFAULT_SETTINGS)}>Reset Nominal Default</button>
+              </div>
             </div>
 
             <div className="settings-section">
-              <div className="settings-section-title">
-                <ClipboardList style={{ width: 16, height: 16 }} />
-                <span>Rekap Kemenangan</span>
-              </div>
-              <div className="recap-toggle">
-                <button className={recapMode === "off" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("off"); }}>Mati</button>
-                <button className={recapMode === "every5" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("every5"); }}>Per 5 Ronde</button>
-              </div>
-              <button className="settings-primary-btn" onClick={() => setShowRecapModal(true)} disabled={matchHistory.length === 0}>
-                Lihat Rekap
+              <button className="settings-section-toggle" onClick={(e) => {
+                const section = e.currentTarget.closest('.settings-section')!;
+                section.classList.toggle('open');
+              }}>
+                <div className="settings-section-title">
+                  <Trophy style={{ width: 16, height: 16 }} />
+                  <span>Riwayat Kemenangan</span>
+                </div>
+                <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
               </button>
-              <p className="settings-help">Rekap otomatis muncul setiap game ke-5, 10, 15, dan seterusnya saat mode per 5 ronde aktif.</p>
+              <div className="settings-section-body">
+                <button
+                  className="settings-primary-btn"
+                  onClick={() => {
+                    setShowSettingsModal(false);
+                    setShowVictoryHistoryModal(true);
+                  }}
+                >
+                  Buka Riwayat Kemenangan
+                </button>
+                <p className="settings-help">Menampilkan rekap kemenangan dan saldo dari ronde yang sudah selesai di permainan aktif.</p>
+              </div>
+            </div>
+
+            <div className="settings-section">
+              <button className="settings-section-toggle" onClick={(e) => {
+                const section = e.currentTarget.closest('.settings-section')!;
+                section.classList.toggle('open');
+              }}>
+                <div className="settings-section-title">
+                  <ClipboardList style={{ width: 16, height: 16 }} />
+                  <span>Rekap Kemenangan</span>
+                </div>
+                <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
+              </button>
+              <div className="settings-section-body">
+                <div className="recap-toggle">
+                  <button className={recapMode === "off" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("off"); }}>Mati</button>
+                  <button className={recapMode === "every5" ? "active" : ""} onClick={() => { markActivity(); setRecapMode("every5"); }}>Per 5 Ronde</button>
+                </div>
+                <button className="settings-primary-btn" onClick={() => setShowRecapModal(true)} disabled={matchHistory.length === 0}>
+                  Lihat Rekap
+                </button>
+                <p className="settings-help">Rekap otomatis muncul setiap game ke-5, 10, 15, dan seterusnya saat mode per 5 ronde aktif.</p>
+              </div>
+            </div>
+
+            {/* PWA Install Section */}
+            <div className="settings-section">
+              <button className="settings-section-toggle" onClick={(e) => {
+                const section = e.currentTarget.closest('.settings-section')!;
+                section.classList.toggle('open');
+              }}>
+                <div className="settings-section-title">
+                  <Download style={{ width: 16, height: 16 }} />
+                  <span>Install Aplikasi</span>
+                </div>
+                <ChevronDown className="settings-chevron" style={{ width: 16, height: 16 }} />
+              </button>
+              <div className="settings-section-body">
+                {!installed && canInstall && (
+                  <button
+                    className="pwa-install-btn"
+                    onClick={install}
+                    id="pwa-install-btn"
+                  >
+                    <Download style={{ width: 18, height: 18 }} />
+                    <span>Download &amp; Install App</span>
+                  </button>
+                )}
+                {!installed && !canInstall && (
+                  <p className="settings-help" style={{ textAlign: 'center', opacity: 0.55, fontSize: 12 }}>
+                    Buka di Chrome/Edge lalu tambahkan ke homescreen untuk install.
+                  </p>
+                )}
+                {installed && (
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 28, marginBottom: 4 }}>✅</div>
+                    <p className="settings-help" style={{ textAlign: 'center', fontSize: 12, opacity: 0.7 }}>Aplikasi sudah terinstall!</p>
+                  </div>
+                )}
+              </div>
             </div>
           </aside>
         </div>

@@ -699,21 +699,111 @@
 }
 
 .settings-section {
-  padding: 14px;
-  margin-bottom: 14px;
+  padding: 0;
+  margin-bottom: 10px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.settings-section-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+.settings-section-toggle:active {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .settings-section-title {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   color: rgba(232, 236, 244, 0.9);
   font-size: 13px;
   font-weight: 800;
+}
+
+.settings-chevron {
+  color: rgba(232, 236, 244, 0.35);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.settings-section.open .settings-chevron {
+  transform: rotate(180deg);
+  color: rgba(232, 236, 244, 0.6);
+}
+
+.settings-section-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  padding: 0 14px;
+}
+
+.settings-section.open .settings-section-body {
+  max-height: 600px;
+  padding: 0 14px 14px;
+}
+
+/* ===== Player Count Selector ===== */
+.player-count-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.player-count-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 62px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(232, 236, 244, 0.5);
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.player-count-option:active {
+  transform: scale(0.95);
+}
+
+.player-count-option .player-count-num {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.player-count-option .player-count-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.player-count-option.active {
+  border-color: rgba(74, 158, 255, 0.5);
+  background: rgba(74, 158, 255, 0.12);
+  color: #4A9EFF;
+  box-shadow: 0 0 16px rgba(74, 158, 255, 0.1), inset 0 0 12px rgba(74, 158, 255, 0.05);
+}
+
+.player-count-option.active .player-count-num {
+  color: #4A9EFF;
 }
 
 .settings-field {
@@ -765,6 +855,51 @@
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(232, 236, 244, 0.72);
+}
+
+/* ===== PWA Install Button ===== */
+.pwa-install-btn {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.22), rgba(74, 158, 255, 0.16));
+  box-shadow:
+    0 0 18px rgba(74, 222, 128, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+}
+
+.pwa-install-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  transform: translateX(-100%);
+  animation: pwa-shimmer 2.4s ease infinite;
+}
+
+@keyframes pwa-shimmer {
+  0%   { transform: translateX(-100%); }
+  60%  { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+.pwa-install-btn:active {
+  transform: scale(0.97);
+  box-shadow:
+    0 0 10px rgba(74, 222, 128, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .recap-toggle {
@@ -1107,4 +1242,217 @@
     opacity: 1;
     transform: translate(-50%, 0);
   }
+}
+
+/* ===== Install Guide Banner (Bottom Sheet) ===== */
+.install-guide-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: ig-fade-in 0.25s ease both;
+}
+
+@keyframes ig-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.install-guide-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 51;
+  max-height: 88dvh;
+  overflow-y: auto;
+  padding: 6px 18px 28px;
+  border-radius: 22px 22px 0 0;
+  background: linear-gradient(180deg, #141B2E 0%, #0C1120 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.5);
+  animation: ig-slide-up 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes ig-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.install-guide-handle {
+  width: 38px;
+  height: 4px;
+  margin: 8px auto 14px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.install-guide-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.install-guide-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4ADE80;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.install-guide-title {
+  font-size: 20px;
+  font-weight: 900;
+  color: #E8ECF4;
+  letter-spacing: -0.02em;
+}
+
+.install-guide-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 236, 244, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s ease;
+}
+
+.install-guide-close:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab toggle */
+.install-guide-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(6, 12, 24, 0.8);
+  margin-bottom: 16px;
+}
+
+.install-guide-tab {
+  min-height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(232, 236, 244, 0.45);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.install-guide-tab.active {
+  background: rgba(255, 255, 255, 0.09);
+  color: #E8ECF4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Steps */
+.install-guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: ig-fade-in 0.2s ease both;
+}
+
+.install-guide-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.install-guide-step .step-num {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  color: #fff;
+  background: linear-gradient(135deg, #4A9EFF, #7C5CFF);
+  box-shadow: 0 0 12px rgba(74, 158, 255, 0.25);
+}
+
+.install-guide-step .step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.install-guide-step .step-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #E8ECF4;
+  margin-bottom: 3px;
+}
+
+.install-guide-step .step-desc {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: rgba(232, 236, 244, 0.55);
+  line-height: 1.45;
+}
+
+.install-guide-step .step-desc strong {
+  color: rgba(232, 236, 244, 0.85);
+  font-weight: 700;
+}
+
+.install-guide-tip {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(74, 222, 128, 0.08);
+  border: 1px solid rgba(74, 222, 128, 0.18);
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(74, 222, 128, 0.85);
+  line-height: 1.45;
+}
+
+.install-guide-tip strong {
+  color: #4ADE80;
+  font-weight: 800;
+}
+
+.install-guide-dismiss-btn {
+  width: 100%;
+  min-height: 46px;
+  margin-top: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(232, 236, 244, 0.6);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.install-guide-dismiss-btn:active {
+  background: rgba(255, 255, 255, 0.1);
 }
